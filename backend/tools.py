@@ -259,7 +259,7 @@ class AgentState(TypedDict):
 llm = ChatGroq(
     model="meta-llama/llama-4-scout-17b-16e-instruct",
     temperature=0,
-    groq_api_key="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"
+    groq_api_key=os.getenv("groq_api_key"),
 )
 
 agent_node = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
