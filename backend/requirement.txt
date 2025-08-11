@@ -1,0 +1,5 @@
+langchain
+supabase
+langchain_community
+langchain_groq
+langgraph
