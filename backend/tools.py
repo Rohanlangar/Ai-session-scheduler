@@ -998,79 +998,58 @@ You are a friendly AI session scheduler. Help students book learning sessions.
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def call_groq_with_tools(user_message: str, available_tools: dict) -> str:
-    """Call Groq with function calling capabilities"""
+    """Simplified Groq implementation without function calling"""
     try:
-        # Create tool definitions for Groq
-        tool_definitions = []
-        for tool_name, tool_func in available_tools.items():
-            tool_definitions.append({
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "description": tool_func.__doc__ or f"Execute {tool_name}",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "input": {
-                                "type": "string",
-                                "description": "Input for the tool"
-                            }
-                        },
-                        "required": ["input"]
-                    }
-                }
-            })
+        # First, get all data to provide context
+        all_data = get_all_data()
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        # Create a comprehensive prompt with data and user request
+        enhanced_prompt = f"""
+{system_prompt}
+
+CURRENT DATABASE STATE:
+{all_data}
+
+USER REQUEST: {user_message}
+
+Based on the current database state and user request, provide a helpful response. If the user wants to book a session, analyze the data and either:
+1. Enroll them in an existing session if one exists for their subject/time
+2. Create a new session if none exists
+3. Suggest optimal times based on existing sessions
+
+Keep responses short and friendly.
+"""
         
-        # Make initial call to Groq
+        # Make call to Groq
         response = groq_client.chat.completions.create(
             model="llama-3.1-70b-versatile",
-            messages=messages,
-            tools=tool_definitions,
-            tool_choice="auto",
-            temperature=0
+            messages=[
+                {"role": "user", "content": enhanced_prompt}
+            ],
+            temperature=0.1,
+            max_tokens=500
         )
         
-        # Handle tool calls
-        if response.choices[0].message.tool_calls:
-            # Add assistant message with tool calls
-            messages.append(response.choices[0].message)
-            
-            # Execute each tool call
-            for tool_call in response.choices[0].message.tool_calls:
-                tool_name = tool_call.function.name
-                tool_input = json.loads(tool_call.function.arguments).get("input", "{}")
+        ai_response = response.choices[0].message.content
+        
+        # If the AI suggests booking a session, try to execute it
+        if "book" in user_message.lower() or "session" in user_message.lower():
+            try:
+                # Extract user ID from the message format
+                user_id = user_message.split("User ID: ")[1].split("\n")[0] if "User ID: " in user_message else "default_user"
                 
-                if tool_name in available_tools:
-                    try:
-                        result = available_tools[tool_name](tool_input)
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": str(result)
-                        })
-                    except Exception as e:
-                        messages.append({
-                            "role": "tool", 
-                            "tool_call_id": tool_call.id,
-                            "content": f"Error executing {tool_name}: {str(e)}"
-                        })
-            
-            # Get final response after tool execution
-            final_response = groq_client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
-                messages=messages,
-                temperature=0
-            )
-            
-            return final_response.choices[0].message.content
-        else:
-            return response.choices[0].message.content
-            
+                # Try to handle the session request
+                session_result = handle_session_request(user_message)
+                
+                # If successful, return the session result instead
+                if "✅" in session_result:
+                    return session_result
+                    
+            except Exception as e:
+                print(f"Session handling error: {e}")
+        
+        return ai_response
+        
     except Exception as e:
         print(f"Error in Groq call: {e}")
         return "I'm having trouble processing your request. Please try again."
