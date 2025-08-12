@@ -1,15 +1,12 @@
 from gotrue import model
-from groq import Groq
+from openai import OpenAI
 from langchain.tools import tool
 from typing import TypedDict, List, Optional
 import json
 import os
 try:
-    from dotenv import load
-    import os
-    # Load .env file from current directory
-    env_path = os.path.join(os.path.dirname(__file__), '.env')
-    load(env_path)
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
     # In production, environment variables are set by the platform
     pass
@@ -994,65 +991,50 @@ You are a friendly AI session scheduler. Help students book learning sessions.
 
 """
 
-# --- Groq Setup ---
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# --- OpenAI Setup ---
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def call_groq_with_tools(user_message: str, available_tools: dict) -> str:
-    """Simplified Groq implementation without function calling"""
+def call_openai_with_tools(user_message: str, available_tools: dict) -> str:
+    """Simple OpenAI implementation with direct tool execution"""
     try:
-        # First, get all data to provide context
-        all_data = get_all_data()
+        print(f"🤖 Processing message: {user_message}")
         
-        # Create a comprehensive prompt with data and user request
-        enhanced_prompt = f"""
-{system_prompt}
-
-CURRENT DATABASE STATE:
-{all_data}
-
-USER REQUEST: {user_message}
-
-Based on the current database state and user request, provide a helpful response. If the user wants to book a session, analyze the data and either:
-1. Enroll them in an existing session if one exists for their subject/time
-2. Create a new session if none exists
-3. Suggest optimal times based on existing sessions
-
-Keep responses short and friendly.
-"""
+        # Extract user ID from message
+        user_id, is_teacher, clean_message = extract_user_id_from_message(user_message)
+        print(f"📝 Extracted - User: {user_id}, Teacher: {is_teacher}, Message: {clean_message}")
         
-        # Make call to Groq
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=[
-                {"role": "user", "content": enhanced_prompt}
-            ],
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        ai_response = response.choices[0].message.content
-        
-        # If the AI suggests booking a session, try to execute it
-        if "book" in user_message.lower() or "session" in user_message.lower():
+        # For session booking requests, directly use handle_session_request
+        if any(keyword in clean_message.lower() for keyword in ['available', 'session', 'book', 'schedule', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday']):
+            print("🎯 Detected session request - using handle_session_request")
             try:
-                # Extract user ID from the message format
-                user_id = user_message.split("User ID: ")[1].split("\n")[0] if "User ID: " in user_message else "default_user"
-                
-                # Try to handle the session request
-                session_result = handle_session_request(user_message)
-                
-                # If successful, return the session result instead
-                if "✅" in session_result:
-                    return session_result
-                    
+                result = handle_session_request(user_message)
+                print(f"✅ Session result: {result}")
+                return result
             except Exception as e:
-                print(f"Session handling error: {e}")
+                print(f"❌ Session handling error: {e}")
+                return "I understand you want to book a session. Let me help you with that. Please try again with your availability."
         
-        return ai_response
+        # For general queries, use OpenAI
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a helpful AI assistant for session scheduling. Keep responses short and friendly."},
+                    {"role": "user", "content": clean_message}
+                ],
+                temperature=0.3,
+                max_tokens=200
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as openai_error:
+            print(f"❌ OpenAI API error: {openai_error}")
+            return "I'm here to help you schedule sessions! Tell me when you're available and what subject you'd like to learn."
         
     except Exception as e:
-        print(f"Error in Groq call: {e}")
-        return "I'm having trouble processing your request. Please try again."
+        print(f"❌ General error in call_openai_with_tools: {e}")
+        return "I'm your AI scheduling assistant! Tell me when you're available for a session."
 
 # --- Enhanced Usage Function ---
 def run_session_agent(user_input: str):
@@ -1082,12 +1064,25 @@ Help them book a session! Be friendly and keep responses short!
             "handle_session_request": handle_session_request
         }
         
-        response = call_groq_with_tools(contextual_input, available_tools)
+        response = call_openai_with_tools(contextual_input, available_tools)
+        
+        # Ensure we always return a string
+        if not response or response.strip() == "":
+            return "I'm here to help you schedule sessions! Tell me when you're available."
+            
         return response
         
     except Exception as e:
         print(f"ERROR in run_session_agent: {e}")
-        return f"I understand your request. There was a technical issue, but I'm working on it. Please try again or rephrase your message."
+        
+        # Try to handle session requests even if Groq fails
+        if any(keyword in clean_message.lower() for keyword in ['available', 'session', 'book', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday']):
+            try:
+                return handle_session_request(contextual_input)
+            except:
+                pass
+        
+        return "I'm your AI scheduling assistant! Tell me when you're available for a session (e.g., 'I'm available Monday 2-4 PM for Python')."
 
 # --- Test Examples ---
 if __name__ == "__main__":
