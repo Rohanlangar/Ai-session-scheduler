@@ -19,8 +19,8 @@ from datetime import datetime, timedelta
 
 # --- Supabase Setup ---
 supabase: Client = create_client(
-    "https://ipfzpnxdtackprxforqh.supabase.co", 
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k"
+    os.getenv("SUPABASE_URL", "your_supabase_url_here"), 
+    os.getenv("SUPABASE_KEY", "your_supabase_key_here")
 )
 
 # --- Helper Functions ---
@@ -1001,7 +1001,7 @@ class AgentState(TypedDict):
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0,
-    openai_api_key="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"
+    openai_api_key=os.getenv("OPENAI_API_KEY", "your_openai_api_key_here")
 )
 
 agent_node = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
