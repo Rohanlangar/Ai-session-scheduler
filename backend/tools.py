@@ -1,7 +1,5 @@
 from gotrue import model
-from langchain_community.chat_models import ChatOpenAI
-from langgraph.graph import StateGraph
-from langgraph.prebuilt import create_react_agent
+from groq import Groq
 from langchain.tools import tool
 from typing import TypedDict, List, Optional
 import json
@@ -13,15 +11,14 @@ except ImportError:
     # In production, environment variables are set by the platform
     pass
 from supabase import create_client, Client
-from langchain_openai import ChatOpenAI
 from datetime import datetime, timedelta
 
 
 
 # --- Supabase Setup ---
 supabase: Client = create_client(
-    os.getenv("SUPABASE_URL", "your_supabase_url_here"), 
-    os.getenv("SUPABASE_KEY", "your_supabase_key_here")
+    os.getenv("SUPABASE_URL"), 
+    os.getenv("SUPABASE_KEY")
 )
 
 # --- Helper Functions ---
@@ -994,24 +991,86 @@ You are a friendly AI session scheduler. Help students book learning sessions.
 
 """
 
-# --- LangGraph Setup ---
-class AgentState(TypedDict):
-    messages: List[dict]
-    next: Optional[str]
+# --- Groq Setup ---
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
-)
-
-agent_node = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
-
-graph_builder = StateGraph(AgentState)
-graph_builder.add_node("agent", agent_node)
-graph_builder.set_entry_point("agent")
-
-graph = graph_builder.compile()
+def call_groq_with_tools(user_message: str, available_tools: dict) -> str:
+    """Call Groq with function calling capabilities"""
+    try:
+        # Create tool definitions for Groq
+        tool_definitions = []
+        for tool_name, tool_func in available_tools.items():
+            tool_definitions.append({
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": tool_func.__doc__ or f"Execute {tool_name}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "input": {
+                                "type": "string",
+                                "description": "Input for the tool"
+                            }
+                        },
+                        "required": ["input"]
+                    }
+                }
+            })
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
+        
+        # Make initial call to Groq
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            messages=messages,
+            tools=tool_definitions,
+            tool_choice="auto",
+            temperature=0
+        )
+        
+        # Handle tool calls
+        if response.choices[0].message.tool_calls:
+            # Add assistant message with tool calls
+            messages.append(response.choices[0].message)
+            
+            # Execute each tool call
+            for tool_call in response.choices[0].message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_input = json.loads(tool_call.function.arguments).get("input", "{}")
+                
+                if tool_name in available_tools:
+                    try:
+                        result = available_tools[tool_name](tool_input)
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": str(result)
+                        })
+                    except Exception as e:
+                        messages.append({
+                            "role": "tool", 
+                            "tool_call_id": tool_call.id,
+                            "content": f"Error executing {tool_name}: {str(e)}"
+                        })
+            
+            # Get final response after tool execution
+            final_response = groq_client.chat.completions.create(
+                model="llama-3.1-70b-versatile",
+                messages=messages,
+                temperature=0
+            )
+            
+            return final_response.choices[0].message.content
+        else:
+            return response.choices[0].message.content
+            
+    except Exception as e:
+        print(f"Error in Groq call: {e}")
+        return "I'm having trouble processing your request. Please try again."
 
 # --- Enhanced Usage Function ---
 def run_session_agent(user_input: str):
@@ -1027,22 +1086,22 @@ def run_session_agent(user_input: str):
         
         # Simple context for AI
         contextual_input = f"""
-Student {user_info.get('name', 'User')} (ID: {user_id}) says: {clean_message}
+CURRENT USER CONTEXT:
+- User ID: {user_id}
+- Role: {'Teacher' if is_teacher else 'Student'}
+- User Message: {clean_message}
 
-Help them book a session! Use:
-1. get_all_data() to see current sessions
-2. handle_session_request() with student_id: "{user_id}" to book/join sessions
-
-Be friendly and keep responses short!
+Help them book a session! Be friendly and keep responses short!
 """
         
-        response = graph.invoke({
-            "messages": [{"role": "user", "content": contextual_input}]
-        })
+        # Create available tools dictionary
+        available_tools = {
+            "get_all_data": get_all_data,
+            "handle_session_request": handle_session_request
+        }
         
-        # Extract the final AI message
-        final_message = response["messages"][-1]
-        return final_message.content if hasattr(final_message, 'content') else str(final_message)
+        response = call_groq_with_tools(contextual_input, available_tools)
+        return response
         
     except Exception as e:
         print(f"ERROR in run_session_agent: {e}")
