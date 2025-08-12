@@ -70,10 +70,20 @@ export default function Home() {
 
   useEffect(() => {
     let mounted = true
+    let timeoutId: NodeJS.Timeout
 
     const initializeAuth = async () => {
       try {
         console.log('🔄 Initializing authentication...')
+        
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (mounted && loading) {
+            console.log('⏰ Auth timeout - stopping loading')
+            setAuthReady(true)
+            setLoading(false)
+          }
+        }, 3000) // 3 second timeout
         
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
@@ -87,12 +97,14 @@ export default function Home() {
         }
         
         if (mounted) {
+          clearTimeout(timeoutId)
           setAuthReady(true)
           setLoading(false)
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
         if (mounted) {
+          clearTimeout(timeoutId)
           setAuthReady(true)
           setLoading(false)
         }
@@ -111,10 +123,12 @@ export default function Home() {
         console.log('✅ User signed in:', session.user.email)
         setUser(session.user)
         await createStudentIfNeeded(session.user)
+        setAuthReady(true)
         setLoading(false)
       } else if (event === 'SIGNED_OUT') {
         console.log('❌ User signed out')
         setUser(null)
+        setAuthReady(true)
         setLoading(false)
       } else if (event === 'TOKEN_REFRESHED') {
         console.log('🔄 Token refreshed')
@@ -127,6 +141,7 @@ export default function Home() {
     // Cleanup
     return () => {
       mounted = false
+      if (timeoutId) clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [])
