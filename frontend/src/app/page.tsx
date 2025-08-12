@@ -60,8 +60,7 @@ export default function Home() {
   const handleGoogleSignIn = async () => {
     setLoading(true)
     try {
-      // Clear any existing session first
-      await supabase.auth.signOut()
+      console.log('🔄 Starting Google sign in...')
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -69,11 +68,17 @@ export default function Home() {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account',
           }
         }
       })
-      if (error) throw error
+      
+      if (error) {
+        console.error('Google auth error:', error)
+        throw error
+      }
+      
+      console.log('✅ Google auth initiated')
     } catch (error) {
       console.error('Google auth error:', error)
       alert('Error signing in. Please try again.')
@@ -84,20 +89,39 @@ export default function Home() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        console.log('🔄 Initializing auth...')
+        
+        // Get current session
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Session error:', error)
+          setLoading(false)
+          return
+        }
         
         if (session?.user) {
+          console.log('✅ User found:', session.user.email)
           setUser(session.user)
+          
+          // Check if student exists
           const studentExists = await checkIfStudent(session.user.id)
+          console.log('Student exists:', studentExists)
           
           if (!studentExists) {
+            console.log('Creating student account...')
             await createStudentAccount(session.user)
           }
           
           setIsStudent(true)
+          console.log('✅ Auth complete - showing chat')
+        } else {
+          console.log('❌ No session found')
+          setUser(null)
+          setIsStudent(null)
         }
       } catch (error) {
-        console.error('Auth error:', error)
+        console.error('Auth initialization error:', error)
       } finally {
         setLoading(false)
       }
@@ -105,20 +129,26 @@ export default function Home() {
 
     initAuth()
 
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      console.log('🔄 Auth state changed:', event, session?.user?.email)
+      
+      if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user)
-        const studentExists = await checkIfStudent(session.user.id)
         
+        const studentExists = await checkIfStudent(session.user.id)
         if (!studentExists) {
           await createStudentAccount(session.user)
         }
         
         setIsStudent(true)
-      } else {
+        console.log('✅ Signed in successfully')
+      } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsStudent(null)
+        console.log('❌ Signed out')
       }
+      
       setLoading(false)
     })
 
@@ -135,6 +165,9 @@ export default function Home() {
       </div>
     )
   }
+
+  // Debug info
+  console.log('Current state:', { user: !!user, isStudent, loading })
 
   // Show chat if user is logged in
   if (user && isStudent) {
@@ -167,6 +200,11 @@ export default function Home() {
 
         <div className="text-center text-sm text-gray-500">
           Sign in to schedule your AI learning sessions
+        </div>
+        
+        {/* Debug info */}
+        <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+          Debug: User={!!user}, Student={isStudent}, Loading={loading}
         </div>
       </div>
     </div>
