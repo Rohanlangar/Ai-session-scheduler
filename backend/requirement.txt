@@ -1,5 +1,9 @@
 langchain
 supabase
 langchain_community
-langchain_groq
+langchain_openai
 langgraph
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
