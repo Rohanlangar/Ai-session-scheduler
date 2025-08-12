@@ -10,9 +10,9 @@
 
 2. **Edit backend/.env with your actual keys:**
    ```
-   SUPABASE_URL=https://ipfzpnxdtackprxforqh.supabase.co
-   SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k
-   OPENAI_API_KEY=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
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_KEY=your_supabase_anon_key_here
+   OPENAI_API_KEY=sk-proj-your_openai_api_key_here
    ```
 
 3. **Frontend Setup:**
@@ -22,8 +22,8 @@
    
    Create `.env.local`:
    ```
-   NEXT_PUBLIC_SUPABASE_URL=https://ipfzpnxdtackprxforqh.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    ```
 
 ## Installation & Running
