@@ -10,6 +10,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
+    # In production, environment variables are set by the platform
     pass
 from supabase import create_client, Client
 from langchain_openai import ChatOpenAI
@@ -834,7 +835,7 @@ def handle_session_request(input: str) -> str:
                 "date": date,
                 "start_time": start_time,
                 "end_time": end_time,
-                "meet_link": f"https://meet.google.com/{broad_subject}-{date}",
+                "meet_link": f"https://meet.google.com/jem-nift-fjj",
                 "status": "active",
                 "total_students": 1
             }
@@ -1001,7 +1002,7 @@ class AgentState(TypedDict):
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0,
-    openai_api_key=os.getenv("OPENAI_API_KEY", "your_openai_api_key_here")
+    openai_api_key=os.getenv("OPENAI_API_KEY")
 )
 
 agent_node = create_react_agent(model=llm, tools=tools, prompt=system_prompt)

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Student, Session, SessionEnrollment } from '@/types'
+import { Student, Session } from '@/types'
 import { Calendar, Clock, Users, BookOpen } from 'lucide-react'
 
 interface StudentDashboardProps {
@@ -22,9 +22,9 @@ export default function StudentDashboard({ student }: StudentDashboardProps) {
   useEffect(() => {
     fetchEnrolledSessions()
     fetchAvailableSessions()
-  }, [student.id])
+  }, [fetchEnrolledSessions, fetchAvailableSessions])
 
-  const fetchEnrolledSessions = async () => {
+  const fetchEnrolledSessions = useCallback(async () => {
     const { data } = await supabase
       .from('session_enrollments')
       .select(`
@@ -37,9 +37,9 @@ export default function StudentDashboard({ student }: StudentDashboardProps) {
       const sessions = data.map(enrollment => enrollment.sessions).filter(Boolean)
       setEnrolledSessions(sessions)
     }
-  }
+  }, [student.id])
 
-  const fetchAvailableSessions = async () => {
+  const fetchAvailableSessions = useCallback(async () => {
     const { data } = await supabase
       .from('sessions')
       .select('*')
@@ -47,7 +47,7 @@ export default function StudentDashboard({ student }: StudentDashboardProps) {
       .order('date', { ascending: true })
     
     if (data) setAvailableSessions(data)
-  }
+  }, []);
 
   const requestSession = async (e: React.FormEvent) => {
     e.preventDefault()

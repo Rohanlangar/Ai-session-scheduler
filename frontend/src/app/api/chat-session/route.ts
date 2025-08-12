@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const runtime = 'nodejs'
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { message, user_id, is_teacher } = body
 
     // Call your Python backend with the chat message
-    const backendResponse = await fetch('http://localhost:8000/api/chat-session', {
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001'
+    const backendResponse = await fetch(`${backendUrl}/api/chat-session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

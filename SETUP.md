@@ -10,9 +10,9 @@
 
 2. **Edit backend/.env with your actual keys:**
    ```
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_KEY=your_supabase_anon_key_here
-   OPENAI_API_KEY=sk-proj-your_openai_api_key_here
+   SUPABASE_URL=your_supabase_project_url
+   SUPABASE_KEY=your_supabase_anon_key
+   OPENAI_API_KEY=your_openai_api_key
    ```
 
 3. **Frontend Setup:**
@@ -22,8 +22,8 @@
    
    Create `.env.local`:
    ```
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 
 ## Installation & Running
@@ -31,7 +31,7 @@
 1. **Backend:**
    ```bash
    cd backend
-   pip install -r requirement.txt
+   pip install -r requirements.txt
    python api_server.py
    ```
 

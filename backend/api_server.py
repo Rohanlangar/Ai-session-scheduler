@@ -10,7 +10,12 @@ app = FastAPI(title="AI Session Scheduler API", version="1.0.0")
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Frontend URLs
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:3001",
+        "https://ai-session-scheduler.vercel.app",  # Your Vercel frontend
+        "https://*.vercel.app"  # Any Vercel deployment
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,7 +108,9 @@ async def root():
     return {"message": "AI Session Scheduler API", "version": "1.0.0"}
 
 if __name__ == '__main__':
+    import os
+    port = int(os.environ.get("PORT", 8000))
     print("🚀 Starting AI Session Scheduler FastAPI Server...")
-    print("📡 Server running on http://localhost:8001")
-    print("📖 API Documentation: http://localhost:8001/docs")
-    uvicorn.run("api_server:app", host="0.0.0.0", port=8001, reload=True)
+    print(f"📡 Server running on port {port}")
+    print("📖 API Documentation available at /docs")
+    uvicorn.run("api_server:app", host="0.0.0.0", port=port, reload=False)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Send, Bot, User, LogOut } from 'lucide-react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
@@ -12,6 +12,22 @@ interface Message {
   timestamp: Date
 }
 
+interface Session {
+  id: string
+  subject: string
+  date: string
+  start_time: string
+  end_time: string
+  meet_link?: string
+  status: string
+  total_students: number
+}
+
+interface EnrollmentData {
+  session_id: string
+  sessions: Session
+}
+
 interface ChatInterfaceProps {
   user: SupabaseUser
   isTeacher: boolean
@@ -21,7 +37,7 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: isTeacher 
+      content: isTeacher
         ? "Hi! I'm your AI scheduling assistant. You can tell me your availability like 'I'm available Monday 2-4 PM for Python sessions' and I'll help manage your schedule."
         : "Hi! I'm your AI scheduling assistant. Tell me when you're available for sessions like 'I'm free Monday 2-4 PM for Python' and I'll find or create the perfect session for you.",
       isUser: false,
@@ -30,38 +46,20 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
   ])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [sessions, setSessions] = useState<any[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    fetchSessions()
-    scrollToBottom()
-  }, [messages])
-
-  // Auto-refresh sessions every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchSessions()
-    }, 10000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
       console.log('🔄 Fetching sessions for user:', user.id, 'isTeacher:', isTeacher)
-      
+
       if (isTeacher) {
         const { data, error } = await supabase
           .from('sessions')
           .select('*')
           .eq('teacher_id', user.id)
           .order('date', { ascending: true })
-        
+
         console.log('Teacher sessions:', data, error)
         if (data) setSessions(data)
       } else {
@@ -82,11 +80,13 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
             )
           `)
           .eq('student_id', user.id)
-        
+
         console.log('Student enrollments:', data, error)
-        
+
         if (data && data.length > 0) {
-          const userSessions = data.map(enrollment => enrollment.sessions).filter(Boolean)
+          const userSessions = (data as EnrollmentData[])
+            .map(enrollment => enrollment.sessions)
+            .filter(Boolean)
           console.log('Mapped sessions:', userSessions)
           setSessions(userSessions)
         } else {
@@ -99,7 +99,24 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       console.error('Error fetching sessions:', error)
       setSessions([])
     }
+  }, [user.id, isTeacher])
+
+  useEffect(() => {
+    fetchSessions()
+    scrollToBottom()
+  }, [messages, fetchSessions])
+
+  // Auto-refresh sessions every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchSessions, 10000)
+    return () => clearInterval(interval)
+  }, [fetchSessions])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
+
+
 
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return
@@ -117,7 +134,8 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
 
     try {
       // Call your backend API
-      const response = await fetch('http://localhost:8001/api/chat-session', {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001'
+      const response = await fetch(`${backendUrl}/api/chat-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -128,7 +146,7 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       })
 
       const data = await response.json()
-      
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: data.response || 'I understand! Let me process that for you.',
@@ -137,13 +155,13 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       }
 
       setMessages(prev => [...prev, botMessage])
-      
+
       // Refresh sessions immediately after AI response
       setTimeout(() => {
         fetchSessions()
       }, 1000) // Small delay to ensure backend has processed
-      
-    } catch (error) {
+
+    } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: 'Sorry, I encountered an error. Please try again.',
@@ -206,20 +224,18 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
               className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  message.isUser
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-900 border'
-                }`}
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.isUser
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-900 border'
+                  }`}
               >
                 <div className="flex items-start space-x-2">
                   {!message.isUser && <Bot size={16} className="mt-1 text-blue-600" />}
                   {message.isUser && <User size={16} className="mt-1" />}
                   <div className="flex-1">
                     <p className="text-sm">{message.content}</p>
-                    <p className={`text-xs mt-1 ${
-                      message.isUser ? 'text-blue-100' : 'text-gray-500'
-                    }`}>
+                    <p className={`text-xs mt-1 ${message.isUser ? 'text-blue-100' : 'text-gray-500'
+                      }`}>
                       {message.timestamp.toLocaleTimeString()}
                     </p>
                   </div>
@@ -251,8 +267,8 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={isTeacher 
+              onKeyDown={handleKeyPress}
+              placeholder={isTeacher
                 ? "Tell me your availability (e.g., 'I'm available Monday 2-4 PM for Python')"
                 : "When are you available? (e.g., 'I'm free Monday 2-4 PM for Python')"
               }
@@ -298,11 +314,10 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
                   <p>👥 {session.total_students} students</p>
                 </div>
                 <div className="mt-3">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    session.status === 'active' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span className={`px-2 py-1 rounded-full text-xs ${session.status === 'active'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-gray-100 text-gray-800'
+                    }`}>
                     {session.status}
                   </span>
                 </div>
