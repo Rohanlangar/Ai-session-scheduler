@@ -8,3 +8,4 @@ langchain
 langchain_openai
 langchain_community
 langgraph
+httpx==0.27.2
