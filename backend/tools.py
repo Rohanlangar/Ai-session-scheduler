@@ -5,8 +5,11 @@ from typing import TypedDict, List, Optional
 import json
 import os
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from dotenv import load
+    import os
+    # Load .env file from current directory
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    load(env_path)
 except ImportError:
     # In production, environment variables are set by the platform
     pass
