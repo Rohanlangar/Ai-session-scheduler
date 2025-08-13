@@ -8,11 +8,21 @@ from langgraph.graph import StateGraph
 from langgraph.prebuilt import create_react_agent
 from typing import TypedDict, List, Optional
 import os
+# Load environment variables
+try:
+    import dotenv
+    dotenv.load_dotenv()
+    print("✅ Environment variables loaded from .env file")
+except Exception as e:
+    print(f"⚠️ Could not load .env file: {e}")
 
-# HARDCODED CREDENTIALS - NO ENV ISSUES
-SUPABASE_URL = "https://ipfzpnxdtackprxforqh.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k"
-ANTHROPIC_API_KEY = "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"
+# Get credentials from environment variables with fallbacks
+SUPABASE_URL = os.getenv("SUPABASE_URL") 
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+print(f"🔧 Using Supabase URL: {SUPABASE_URL}")
+print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Missing'}")
 
 # Create Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
