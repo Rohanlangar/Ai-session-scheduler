@@ -10,26 +10,22 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [authReady, setAuthReady] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Fix hydration issues
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleGoogleSignIn = async () => {
     try {
-      console.log('🔄 Starting Google sign in...')
-      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          }
         }
       })
-      
-      if (error) {
-        console.error('Google auth error:', error)
-        alert('Error signing in. Please try again.')
-      }
+      if (error) throw error
     } catch (error) {
       console.error('Google auth error:', error)
       alert('Error signing in. Please try again.')
@@ -38,14 +34,23 @@ export default function Home() {
 
   const createStudentIfNeeded = async (user: User) => {
     try {
+      console.log('🔄 Checking if student exists for:', user.email)
+      
       // Check if student exists
-      const { data: existingStudent } = await supabase
+      const { data: existingStudent, error: selectError } = await supabase
         .from('students')
         .select('user_id')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle() // Use maybeSingle instead of single to avoid errors when no record exists
+      
+      if (selectError) {
+        console.error('Error checking student:', selectError)
+        return
+      }
       
       if (!existingStudent) {
+        console.log('🔄 Creating student account...')
+        
         // Create student account
         const userData = {
           user_id: user.id,
@@ -53,18 +58,24 @@ export default function Home() {
                 user.user_metadata?.full_name || 
                 user.email?.split('@')[0] || 
                 'Student',
-          email: user.email
+          email: user.email || ''
         }
         
-        const { error } = await supabase.from('students').insert(userData)
+        console.log('📝 Student data:', userData)
+        
+        const { data, error } = await supabase.from('students').insert(userData).select()
         if (error) {
-          console.error('Error creating student:', error)
+          console.error('❌ Error creating student:', error)
+          // Don't throw error, just log it - user can still use the app
         } else {
-          console.log('✅ Student account created')
+          console.log('✅ Student account created:', data)
         }
+      } else {
+        console.log('✅ Student already exists')
       }
     } catch (error) {
-      console.error('Error in createStudentIfNeeded:', error)
+      console.error('❌ Error in createStudentIfNeeded:', error)
+      // Don't throw error, just log it
     }
   }
 
@@ -146,6 +157,11 @@ export default function Home() {
     }
   }, [])
 
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return null
+  }
+
   // Show loading spinner
   if (loading || !authReady) {
     return (
@@ -192,10 +208,12 @@ export default function Home() {
           Sign in to schedule your AI learning sessions
         </div>
         
-        {/* Debug info */}
-        <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
-          Debug: User={!!user}, AuthReady={authReady}, Loading={loading}
-        </div>
+        {/* Debug info - only show in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+            Debug: User={!!user}, AuthReady={authReady}, Loading={loading}, Mounted={mounted}
+          </div>
+        )}
       </div>
     </div>
   )

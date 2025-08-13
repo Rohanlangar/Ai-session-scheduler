@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const { message, user_id, is_teacher } = body
 
     // Call your Python backend with the chat message
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001'
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
     const backendResponse = await fetch(`${backendUrl}/api/chat-session`, {
       method: 'POST',
       headers: {
@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Chat session error:', error)
     return NextResponse.json(
-      { 
+      {
         response: 'I understand your request. Let me process that for you.',
-        error: 'Backend temporarily unavailable' 
+        error: 'Backend temporarily unavailable'
       },
       { status: 200 } // Return 200 to avoid frontend errors
     )

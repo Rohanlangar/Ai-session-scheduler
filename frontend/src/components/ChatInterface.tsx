@@ -53,22 +53,26 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
     try {
       console.log('🔄 Fetching sessions for user:', user.id, 'isTeacher:', isTeacher)
 
+      // Get current date for filtering future sessions only
+      const today = new Date().toISOString().split('T')[0]
+
       if (isTeacher) {
         const { data, error } = await supabase
           .from('sessions')
           .select('*')
           .eq('teacher_id', user.id)
+          .gte('date', today) // Only future sessions
           .order('date', { ascending: true })
 
-        console.log('Teacher sessions:', data, error)
+        console.log('Teacher sessions (future only):', data, error)
         if (data) setSessions(data)
       } else {
-        // For students, get sessions they're enrolled in
+        // For students, get sessions they're enrolled in (future only)
         const { data, error } = await supabase
           .from('session_enrollments')
           .select(`
             session_id,
-            sessions (
+            sessions!inner (
               id,
               subject,
               date,
@@ -80,18 +84,20 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
             )
           `)
           .eq('student_id', user.id)
+          .gte('sessions.date', today) // Only future sessions
 
-        console.log('Student enrollments:', data, error)
+        console.log('Student enrollments (future only):', data, error)
 
         if (data && data.length > 0) {
           const userSessions = (data as EnrollmentData[])
             .map(enrollment => enrollment.sessions)
             .filter(Boolean)
-          console.log('Mapped sessions:', userSessions)
+            .filter(session => session.date >= today) // Double check for future dates
+          console.log('Mapped future sessions:', userSessions)
           setSessions(userSessions)
         } else {
           // No enrollments found - show empty
-          console.log('No enrollments found for this student')
+          console.log('No future enrollments found for this student')
           setSessions([])
         }
       }
@@ -106,10 +112,40 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
     scrollToBottom()
   }, [messages, fetchSessions])
 
-  // Auto-refresh sessions every 10 seconds
+  // Real-time session updates using Supabase subscriptions
   useEffect(() => {
-    const interval = setInterval(fetchSessions, 10000)
-    return () => clearInterval(interval)
+    console.log('🔄 Setting up real-time session updates...')
+    
+    // Subscribe to session changes
+    const sessionSubscription = supabase
+      .channel('sessions')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'sessions' }, 
+        (payload) => {
+          console.log('📡 Session updated:', payload)
+          fetchSessions() // Refresh when sessions change
+        }
+      )
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'session_enrollments' }, 
+        (payload) => {
+          console.log('📡 Enrollment updated:', payload)
+          fetchSessions() // Refresh when enrollments change
+        }
+      )
+      .subscribe()
+
+    // Fallback: Auto-refresh every 2 seconds for instant updates
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing sessions...')
+      fetchSessions()
+    }, 2000)
+
+    return () => {
+      console.log('🔄 Cleaning up subscriptions...')
+      sessionSubscription.unsubscribe()
+      clearInterval(interval)
+    }
   }, [fetchSessions])
 
   const scrollToBottom = () => {
@@ -134,7 +170,9 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
 
     try {
       // Call your backend API
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001'
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080'
+      console.log('🔄 Sending request to:', `${backendUrl}/api/chat-session`)
+
       const response = await fetch(`${backendUrl}/api/chat-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -145,7 +183,14 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
         })
       })
 
+      console.log('📡 Response status:', response.status)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
       const data = await response.json()
+      console.log('📝 Response data:', data)
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -156,15 +201,19 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
 
       setMessages(prev => [...prev, botMessage])
 
-      // Refresh sessions immediately after AI response
-      setTimeout(() => {
-        fetchSessions()
-      }, 1000) // Small delay to ensure backend has processed
+      // INSTANT session refresh - multiple attempts for reliability
+      fetchSessions()
+      
+      setTimeout(() => fetchSessions(), 100)
+      setTimeout(() => fetchSessions(), 300)
+      setTimeout(() => fetchSessions(), 600)
+      setTimeout(() => fetchSessions(), 1000)
 
-    } catch {
+    } catch (error) {
+      console.error('❌ Frontend request error:', error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: `Connection error: ${error instanceof Error ? error.message : 'Please check if backend is running on port 8080'}`,
         isUser: false,
         timestamp: new Date()
       }
@@ -184,12 +233,10 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
-      // Force page reload to clear all state
-      window.location.href = '/'
+      window.location.reload()
     } catch (error) {
       console.error('Logout error:', error)
-      // Force reload anyway
-      window.location.href = '/'
+      window.location.reload()
     }
   }
 
@@ -209,7 +256,7 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800"
+            className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-white hover:bg-red-500 rounded-lg transition-colors duration-200"
           >
             <LogOut size={20} />
             <span>Logout</span>
