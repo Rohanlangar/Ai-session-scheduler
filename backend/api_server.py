@@ -23,27 +23,44 @@ class ChatRequest(BaseModel):
 async def chat_session(request: ChatRequest):
     """Handle chat messages and create sessions"""
     try:
-        # Import here to avoid circular imports
-        from tools import run_session_agent
-        
-        # Format message for the agent
-        user_message = f"Student {request.user_id}: {request.message}"
-        
-        # Get AI response
-        response = run_session_agent(user_message)
-        
-        return {
-            "success": True,
-            "response": response,
-            "user_id": request.user_id,
-            "is_teacher": request.is_teacher
-        }
+        if request.is_teacher:
+            # Handle teacher messages with AI agent for availability
+            from tools import run_session_agent
+            
+            # Format message for the agent (as teacher)
+            user_message = f"Teacher {request.user_id}: {request.message}"
+            
+            # Get AI response
+            response = run_session_agent(user_message)
+            
+            return {
+                "success": True,
+                "response": response,
+                "user_id": request.user_id,
+                "is_teacher": request.is_teacher
+            }
+        else:
+            # Handle student session requests with AI
+            from tools import run_session_agent
+            
+            # Format message for the agent
+            user_message = f"Student {request.user_id}: {request.message}"
+            
+            # Get AI response
+            response = run_session_agent(user_message)
+            
+            return {
+                "success": True,
+                "response": response,
+                "user_id": request.user_id,
+                "is_teacher": request.is_teacher
+            }
         
     except Exception as e:
         print(f"❌ API Error: {e}")
         return {
             "success": False,
-            "response": "✅ I understand! Let me help you schedule a session.",
+            "response": "✅ I understand! Let me help you.",
             "user_id": request.user_id,
             "is_teacher": request.is_teacher
         }

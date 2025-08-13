@@ -53,21 +53,23 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
     try {
       console.log('🔄 Fetching sessions for user:', user.id, 'isTeacher:', isTeacher)
 
-      // Get current date for filtering future sessions only
+      // Get current date for filtering today and above
       const today = new Date().toISOString().split('T')[0]
+      console.log('📅 Filtering sessions from date:', today)
 
       if (isTeacher) {
         const { data, error } = await supabase
           .from('sessions')
           .select('*')
           .eq('teacher_id', user.id)
-          .gte('date', today) // Only future sessions
+          .gte('date', today) // Today and above
+          .eq('status', 'active')
           .order('date', { ascending: true })
 
-        console.log('Teacher sessions (future only):', data, error)
+        console.log('Teacher sessions (today and above):', data, error)
         if (data) setSessions(data)
       } else {
-        // For students, get sessions they're enrolled in (future only)
+        // For students, get sessions they're enrolled in (today and above)
         const { data, error } = await supabase
           .from('session_enrollments')
           .select(`
@@ -84,20 +86,21 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
             )
           `)
           .eq('student_id', user.id)
-          .gte('sessions.date', today) // Only future sessions
+          .gte('sessions.date', today) // Today and above
+          .eq('sessions.status', 'active')
 
-        console.log('Student enrollments (future only):', data, error)
+        console.log('Student enrollments (today and above):', data, error)
 
         if (data && data.length > 0) {
           const userSessions = (data as EnrollmentData[])
             .map(enrollment => enrollment.sessions)
             .filter(Boolean)
-            .filter(session => session.date >= today) // Double check for future dates
-          console.log('Mapped future sessions:', userSessions)
+            .filter(session => session.date >= today) // Double check for today and above
+          console.log('Mapped sessions (today and above):', userSessions)
           setSessions(userSessions)
         } else {
           // No enrollments found - show empty
-          console.log('No future enrollments found for this student')
+          console.log('No enrollments found for this student from today onwards')
           setSessions([])
         }
       }
@@ -338,9 +341,12 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       {/* Sessions Sidebar - 30% */}
       <div className="bg-white border-l" style={{ width: '30%' }}>
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {isTeacher ? 'My Sessions' : 'Enrolled Sessions'}
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isTeacher ? 'My Sessions' : 'My Sessions'}
+            </h2>
+            <p className="text-xs text-gray-500">Today & upcoming</p>
+          </div>
           <button
             onClick={fetchSessions}
             className="text-blue-600 hover:text-blue-800 text-sm"
@@ -350,14 +356,17 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
         </div>
         <div className="p-4 space-y-4 overflow-y-auto" style={{ height: 'calc(100vh - 80px)' }}>
           {sessions.length === 0 ? (
-            <p className="text-gray-500 text-center">No sessions yet</p>
+            <div className="text-center">
+              <p className="text-gray-500">No sessions found</p>
+              <p className="text-xs text-gray-400 mt-1">Sessions from today onwards will appear here</p>
+            </div>
           ) : (
             sessions.map((session) => (
               <div key={session.id} className="border rounded-lg p-4 bg-gray-50">
-                <h3 className="font-medium text-blue-600">{session.subject}</h3>
+                <h3 className="font-medium text-blue-600 capitalize">{session.subject}</h3>
                 <div className="text-sm text-gray-600 mt-2 space-y-1">
                   <p>📅 {session.date}</p>
-                  <p>🕐 {session.start_time} - {session.end_time}</p>
+                  <p>🕐 {session.start_time?.slice(0, 5)} - {session.end_time?.slice(0, 5)}</p>
                   <p>👥 {session.total_students} students</p>
                 </div>
                 <div className="mt-3">
