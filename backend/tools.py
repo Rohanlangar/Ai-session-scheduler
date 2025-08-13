@@ -9,12 +9,6 @@ from langgraph.prebuilt import create_react_agent
 from typing import TypedDict, List, Optional
 import os
 # Load environment variables
-try:
-    import dotenv
-    dotenv.load_dotenv()
-    print("✅ Environment variables loaded from .env file")
-except Exception as e:
-    print(f"⚠️ Could not load .env file: {e}")
 
 # Get credentials from environment variables with fallbacks
 SUPABASE_URL = os.getenv("SUPABASE_URL") 
