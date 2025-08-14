@@ -144,9 +144,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white flex flex-col">
       <Navbar user={user} />
-      <div className="pt-4">
+      <div className="flex-1">
         <ChatInterface user={user} isTeacher={isTeacher} />
       </div>
     </div>

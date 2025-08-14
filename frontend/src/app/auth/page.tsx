@@ -21,6 +21,63 @@ export default function AuthPage() {
   const [isSuccess, setIsSuccess] = useState(false)
   const router = useRouter()
 
+  const autoAssignRole = async (user: User) => {
+    try {
+      // Check if user already has a role
+      const { data: teacherData } = await supabase
+        .from('teachers')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      const { data: studentData } = await supabase
+        .from('students')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      // If user already has a role, don't create another one
+      if (teacherData || studentData) {
+        return
+      }
+
+      const userData = {
+        id: user.id,
+        user_id: user.id,
+        name: user.user_metadata?.name || 
+              user.user_metadata?.full_name || 
+              user.email?.split('@')[0] || 
+              'User',
+        email: user.email || ''
+      }
+      
+      // Check if this is the specific teacher ID
+      const TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
+      
+      if (user.id === TEACHER_ID) {
+        // Create teacher account
+        await supabase.from('teachers').insert({
+          id: userData.id,
+          name: userData.name,
+          email: userData.email
+        })
+        console.log('✅ Teacher account created for:', user.email)
+      } else {
+        // Create student account for everyone else
+        await supabase.from('students').insert({
+          user_id: userData.user_id,
+          name: userData.name,
+          email: userData.email
+        })
+        console.log('✅ Student account created for:', user.email)
+      }
+      
+    } catch (error: any) {
+      console.error('Error auto-assigning role:', error)
+      // Don't throw error, just log it
+    }
+  }
+
   useEffect(() => {
     setMounted(true)
     
@@ -102,23 +159,29 @@ export default function AuthPage() {
 
         const { data, error } = await supabase.auth.signUp({
           email,
-          password
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`
+          }
         })
 
         if (error) throw error
 
-        // Auto-assign role for new user
-        if (data.user) {
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+          setMessage('Please check your email and click the confirmation link to complete signup.')
+          setIsSuccess(true)
+        } else if (data.user && data.session) {
+          // Auto-assign role for new user (immediate signup without email confirmation)
           await autoAssignRole(data.user)
+          setMessage('Account created successfully!')
+          setIsSuccess(true)
+          
+          // Redirect after a short delay
+          setTimeout(() => {
+            router.push('/dashboard')
+          }, 1500)
         }
-
-        setMessage('Account created successfully!')
-        setIsSuccess(true)
-        
-        // Redirect after a short delay
-        setTimeout(() => {
-          router.push('/dashboard')
-        }, 1500)
       }
     } catch (error: any) {
       setMessage(error.message || 'An error occurred')
@@ -142,63 +205,6 @@ export default function AuthPage() {
       setMessage(error.message || 'Error signing in with Google')
       setIsSuccess(false)
       setLoading(false)
-    }
-  }
-
-  const autoAssignRole = async (user: User) => {
-    try {
-      // Check if user already has a role
-      const { data: teacherData } = await supabase
-        .from('teachers')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      const { data: studentData } = await supabase
-        .from('students')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      // If user already has a role, don't create another one
-      if (teacherData || studentData) {
-        return
-      }
-
-      const userData = {
-        id: user.id,
-        user_id: user.id,
-        name: user.user_metadata?.name || 
-              user.user_metadata?.full_name || 
-              user.email?.split('@')[0] || 
-              'User',
-        email: user.email || ''
-      }
-      
-      // Check if this is the specific teacher ID
-      const TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
-      
-      if (user.id === TEACHER_ID) {
-        // Create teacher account
-        await supabase.from('teachers').insert({
-          id: userData.id,
-          name: userData.name,
-          email: userData.email
-        })
-        console.log('✅ Teacher account created for:', user.email)
-      } else {
-        // Create student account for everyone else
-        await supabase.from('students').insert({
-          user_id: userData.user_id,
-          name: userData.name,
-          email: userData.email
-        })
-        console.log('✅ Student account created for:', user.email)
-      }
-      
-    } catch (error: any) {
-      console.error('Error auto-assigning role:', error)
-      // Don't throw error, just log it
     }
   }
 
@@ -315,7 +321,7 @@ export default function AuthPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200"
                     placeholder="Enter your email"
                   />
                 </div>
@@ -334,7 +340,7 @@ export default function AuthPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200"
                     placeholder="Enter your password"
                   />
                   <button
@@ -361,7 +367,7 @@ export default function AuthPage() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all duration-200"
                       placeholder="Confirm your password"
                     />
                   </div>
