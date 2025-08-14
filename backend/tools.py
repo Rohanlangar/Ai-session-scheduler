@@ -7,13 +7,13 @@ from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import create_react_agent
 from typing import TypedDict, List, Optional
-import os
-# Load environment variables
+import os   
+
 
 # Get credentials from environment variables with fallbacks
-SUPABASE_URL = os.getenv("SUPABASE_URL") 
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+SUPABASE_URL =
+SUPABASE_KEY = 
+ANTHROPIC_API_KEY =
 
 print(f"🔧 Using Supabase URL: {SUPABASE_URL}")
 print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Missing'}")
@@ -110,11 +110,17 @@ class AgentState(TypedDict):
     next: Optional[str]
 
 # Claude (Anthropic) LLM
-llm = ChatAnthropic(
-    model="claude-3-haiku-20240307",
-    temperature=0.1,
-    api_key=ANTHROPIC_API_KEY
-)
+try:
+    llm = ChatAnthropic(
+        model="claude-3-haiku-20240307",
+        temperature=0.1,
+        api_key=ANTHROPIC_API_KEY
+    )
+    print("✅ Anthropic LLM initialized successfully")
+except Exception as e:
+    print(f"⚠️ Anthropic LLM initialization failed: {e}")
+    print("🔧 Using mock LLM for testing")
+    llm = None
 
 # System prompt for the agent
 system_prompt = """
@@ -192,6 +198,13 @@ This is a STUDENT booking sessions. Follow student workflow:
 
 Keep response short and friendly!
 """
+        
+        if llm is None:
+            # Mock response for testing when API key is invalid
+            if is_actual_teacher:
+                return "✅ I understand you want to set your availability! Please get a valid Anthropic API key to use the full AI features."
+            else:
+                return "✅ I understand you want to book a session! Please get a valid Anthropic API key to use the full AI features."
         
         response = graph.invoke({
             "messages": [{"role": "user", "content": contextual_input}]
@@ -579,16 +592,21 @@ tools = [
 ]
 
 # Create the agent with proper LangGraph syntax
-agent = create_react_agent(llm, tools, state_modifier=system_prompt)
+if llm is not None:
+    agent = create_react_agent(llm, tools, state_modifier=system_prompt)
 
-# Create the graph
-class SessionAgentState(TypedDict):
-    messages: List[dict]
+    # Create the graph
+    class SessionAgentState(TypedDict):
+        messages: List[dict]
 
-graph_builder = StateGraph(SessionAgentState)
-graph_builder.add_node("agent", agent)
-graph_builder.set_entry_point("agent")
-graph = graph_builder.compile()
+    graph_builder = StateGraph(SessionAgentState)
+    graph_builder.add_node("agent", agent)
+    graph_builder.set_entry_point("agent")
+    graph = graph_builder.compile()
+    print("✅ LangGraph agent created successfully")
+else:
+    graph = None
+    print("⚠️ LangGraph agent not created - using mock responses")
 
 # Test function
 if __name__ == "__main__":
