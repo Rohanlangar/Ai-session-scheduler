@@ -704,7 +704,7 @@ def create_new_session(input: str) -> str:
         
         # 2. Create session
         session_data = {
-            "teacher_id": "46a3bfcd-2d45-417c-b578-b4ac0f1c577c",
+            "teacher_id": "e4bcab2f-8da5-4a78-85e8-094f4d7ac308",
             "subject": subject,
             "date": date,
             "start_time": start_time,

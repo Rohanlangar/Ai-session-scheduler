@@ -29,14 +29,32 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
   const fetchSessions = async () => {
     setLoading(true)
     try {
-      console.log('Fetching sessions for teacher:', teacher.id, 'with filter:', sessionFilter)
+      console.log('=== DEBUGGING SESSION FETCH ===')
+      console.log('Teacher object:', teacher)
+      console.log('Teacher ID:', teacher.id)
+      console.log('Filter:', sessionFilter)
       
-      // Direct Supabase query - simple and clean
+      // First, let's check if there are ANY sessions in the database
+      const { data: allSessions, error: allError } = await supabase
+        .from('sessions')
+        .select('*')
+      
+      console.log('All sessions in database:', allSessions?.length || 0)
+      console.log('All sessions data:', allSessions)
+      
+      if (allError) {
+        console.error('Error fetching all sessions:', allError)
+      }
+      
+      // Now fetch sessions for this specific teacher
       const { data, error } = await supabase
         .from('sessions')
         .select('*')
         .eq('teacher_id', teacher.id)
         .order('date', { ascending: true })
+      
+      console.log('Sessions for teacher:', data?.length || 0)
+      console.log('Teacher sessions data:', data)
       
       if (error) {
         console.error('Supabase error:', error)
@@ -44,8 +62,8 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
         return
       }
 
-      if (!data) {
-        console.log('No sessions found')
+      if (!data || data.length === 0) {
+        console.log('No sessions found for this teacher')
         setSessions([])
         return
       }
@@ -80,6 +98,7 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
       // 'all' filter shows everything, no filtering needed
 
       console.log('Filtered sessions:', filteredSessions.length)
+      console.log('Final sessions to display:', filteredSessions)
       setSessions(filteredSessions)
       
     } catch (error) {
@@ -122,6 +141,15 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
           Teacher Dashboard - {teacher.name}
         </h1>
+
+        {/* Debug Info */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-yellow-800 mb-2">Debug Info:</h3>
+          <p className="text-sm text-yellow-700">Teacher ID: {teacher.id}</p>
+          <p className="text-sm text-yellow-700">Filter: {sessionFilter}</p>
+          <p className="text-sm text-yellow-700">Sessions Count: {sessions.length}</p>
+          <p className="text-sm text-yellow-700">Loading: {loading ? 'Yes' : 'No'}</p>
+        </div>
 
         {/* Session Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
