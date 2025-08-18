@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Teacher, Session, TeacherAvailability } from '@/types'
-import { Calendar, Clock, Users, Plus } from 'lucide-react'
+import { Calendar, Clock, Users, Plus, Filter } from 'lucide-react'
 
 interface TeacherDashboardProps {
   teacher: Teacher
@@ -12,6 +12,8 @@ interface TeacherDashboardProps {
 export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [availability, setAvailability] = useState<TeacherAvailability[]>([])
+  const [sessionFilter, setSessionFilter] = useState<string>('today_future')
+  const [loading, setLoading] = useState(false)
   const [newAvailability, setNewAvailability] = useState({
     date: '',
     start_time: '',
@@ -22,16 +24,59 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
   useEffect(() => {
     fetchSessions()
     fetchAvailability()
-  }, [teacher.id])
+  }, [teacher.id, sessionFilter])
 
   const fetchSessions = async () => {
-    const { data } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('teacher_id', teacher.id)
-      .order('date', { ascending: true })
-    
-    if (data) setSessions(data)
+    setLoading(true)
+    try {
+      console.log('Fetching sessions for teacher:', teacher.id, 'with filter:', sessionFilter)
+      
+      // Use the new backend API endpoint
+      const response = await fetch('/api/teacher-sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          teacher_id: teacher.id,
+          filter_type: sessionFilter
+        })
+      })
+      
+      const result = await response.json()
+      console.log('API Response:', result)
+      
+      if (result.success) {
+        console.log('Sessions found:', result.sessions.length)
+        setSessions(result.sessions)
+      } else {
+        console.error('Failed to fetch sessions:', result.error)
+        // Fallback to direct Supabase query
+        console.log('Falling back to direct Supabase query...')
+        const { data, error } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('teacher_id', teacher.id)
+          .order('date', { ascending: true })
+        
+        console.log('Supabase fallback result:', { data, error })
+        if (data) setSessions(data)
+      }
+    } catch (error) {
+      console.error('Error fetching sessions:', error)
+      // Fallback to direct Supabase query
+      console.log('Exception occurred, falling back to direct Supabase query...')
+      const { data, error: supabaseError } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('teacher_id', teacher.id)
+        .order('date', { ascending: true })
+      
+      console.log('Supabase fallback result:', { data, error: supabaseError })
+      if (data) setSessions(data)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fetchAvailability = async () => {
@@ -66,6 +111,50 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
           Teacher Dashboard - {teacher.name}
         </h1>
+
+        {/* Session Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <Users className="h-8 w-8 text-blue-500" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Total Sessions</p>
+                <p className="text-2xl font-semibold text-gray-900">{sessions.length}</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <Calendar className="h-8 w-8 text-green-500" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Active Sessions</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {sessions.filter(s => s.status === 'active').length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <Clock className="h-8 w-8 text-orange-500" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Total Students</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {sessions.reduce((sum, s) => sum + (s.total_students || 0), 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center">
+              <Plus className="h-8 w-8 text-purple-500" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-500">Availability Slots</p>
+                <p className="text-2xl font-semibold text-gray-900">{availability.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
@@ -138,40 +227,104 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
 
           {/* Sidebar - Scheduled Sessions */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <Users className="mr-2" size={20} />
-              Scheduled Sessions
-            </h2>
-            <div className="space-y-4">
-              {sessions.map((session) => (
-                <div key={session.id} className="border rounded-lg p-4">
-                  <h3 className="font-medium text-blue-600">{session.subject}</h3>
-                  <div className="text-sm text-gray-600 mt-2 space-y-1">
-                    <p className="flex items-center">
-                      <Calendar size={14} className="mr-1" />
-                      {session.date}
-                    </p>
-                    <p className="flex items-center">
-                      <Clock size={14} className="mr-1" />
-                      {session.start_time} - {session.end_time}
-                    </p>
-                    <p className="flex items-center">
-                      <Users size={14} className="mr-1" />
-                      {session.total_students} students
-                    </p>
-                  </div>
-                  <div className="mt-3">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      session.status === 'active' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {session.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold flex items-center">
+                <Users className="mr-2" size={20} />
+                Your Sessions
+              </h2>
+              <div className="flex items-center space-x-2">
+                <Filter size={16} className="text-gray-500" />
+                <select
+                  value={sessionFilter}
+                  onChange={(e) => setSessionFilter(e.target.value)}
+                  className="text-sm border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Sessions</option>
+                  <option value="today_future">Today & Future</option>
+                  <option value="today">Today Only</option>
+                  <option value="future">Future Only</option>
+                </select>
+              </div>
             </div>
+            
+            {loading ? (
+              <div className="text-center py-4 text-gray-500">Loading sessions...</div>
+            ) : (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {sessions.length === 0 ? (
+                  <div className="text-center py-4 text-gray-500">
+                    No sessions found for the selected filter.
+                  </div>
+                ) : (
+                  sessions.map((session) => {
+                    const sessionDate = new Date(session.date)
+                    const today = new Date()
+                    const isPast = sessionDate < today
+                    const isToday = sessionDate.toDateString() === today.toDateString()
+                    
+                    return (
+                      <div 
+                        key={session.id} 
+                        className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                          isPast ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <h3 className={`font-medium ${isPast ? 'text-gray-500' : 'text-blue-600'}`}>
+                            {session.subject}
+                          </h3>
+                          {isToday && (
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
+                              Today
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-2 space-y-1">
+                          <p className="flex items-center">
+                            <Calendar size={14} className="mr-1" />
+                            {sessionDate.toLocaleDateString()}
+                          </p>
+                          <p className="flex items-center">
+                            <Clock size={14} className="mr-1" />
+                            {session.start_time} - {session.end_time}
+                          </p>
+                          <p className="flex items-center">
+                            <Users size={14} className="mr-1" />
+                            {session.total_students || 0} students enrolled
+                          </p>
+                          {session.meet_link && !isPast && (
+                            <p className="text-xs">
+                              <a 
+                                href={session.meet_link} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:underline"
+                              >
+                                Join Meeting
+                              </a>
+                            </p>
+                          )}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            session.status === 'active' 
+                              ? 'bg-green-100 text-green-800' 
+                              : session.status === 'completed'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {session.status}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            ID: {session.id.slice(0, 8)}...
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

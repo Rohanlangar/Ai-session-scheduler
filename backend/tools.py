@@ -11,7 +11,7 @@ import os
 
 
 # Get credentials from environment variables - NO fallbacks for security
-SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_URL = 
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -458,6 +458,62 @@ def get_all_sessions_data() -> str:
         return json.dumps(data, indent=2, default=str)
     except Exception as e:
         return f"Error getting sessions data: {e}"
+
+def get_teacher_sessions_with_filter(teacher_id: str, filter_type: str = "all") -> list:
+    """Get all sessions for a teacher with optional date filtering"""
+    try:
+        print(f"🔄 Getting sessions for teacher {teacher_id} with filter: {filter_type}")
+        
+        # Get all sessions for the teacher
+        query = supabase.table('sessions').select('*').eq('teacher_id', teacher_id)
+        
+        # Apply status filter - get all sessions, not just active ones
+        sessions_response = query.execute()
+        sessions = sessions_response.data
+        
+        if not sessions:
+            print(f"📭 No sessions found for teacher {teacher_id}")
+            return []
+        
+        # Get enrollment counts for all sessions
+        enrollments_response = supabase.table('session_enrollments').select('session_id').execute()
+        enrollment_counts = {}
+        
+        for enrollment in enrollments_response.data:
+            session_id = enrollment['session_id']
+            enrollment_counts[session_id] = enrollment_counts.get(session_id, 0) + 1
+        
+        # Apply date filtering and add enrollment counts
+        today = datetime.now().date()
+        filtered_sessions = []
+        
+        for session in sessions:
+            session_date = datetime.strptime(session['date'], '%Y-%m-%d').date()
+            
+            # Add actual enrollment count
+            session['total_students'] = enrollment_counts.get(session['id'], 0)
+            
+            if filter_type == "all":
+                filtered_sessions.append(session)
+            elif filter_type == "today_future":
+                if session_date >= today:
+                    filtered_sessions.append(session)
+            elif filter_type == "today":
+                if session_date == today:
+                    filtered_sessions.append(session)
+            elif filter_type == "future":
+                if session_date > today:
+                    filtered_sessions.append(session)
+        
+        # Sort by date and time
+        filtered_sessions.sort(key=lambda x: (x['date'], x['start_time']))
+        
+        print(f"✅ Found {len(filtered_sessions)} sessions for teacher {teacher_id} (filter: {filter_type})")
+        return filtered_sessions
+        
+    except Exception as e:
+        print(f"❌ Error getting teacher sessions: {e}")
+        return []
 
 @tool
 def parse_student_request(input: str) -> str:

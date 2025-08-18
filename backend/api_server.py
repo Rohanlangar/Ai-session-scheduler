@@ -33,6 +33,10 @@ class ChatRequest(BaseModel):
     user_id: str
     is_teacher: bool = False
 
+class TeacherSessionsRequest(BaseModel):
+    teacher_id: str
+    filter_type: str = "all"  # "all", "today_future", "today", "future"
+
 @app.post("/api/chat-session")
 async def chat_session(request: ChatRequest):
     """Handle chat messages and create sessions"""
@@ -77,6 +81,29 @@ async def chat_session(request: ChatRequest):
             "response": "✅ I understand! Let me help you.",
             "user_id": request.user_id,
             "is_teacher": request.is_teacher
+        }
+
+@app.post("/api/teacher-sessions")
+async def get_teacher_sessions(request: TeacherSessionsRequest):
+    """Get all sessions for a teacher with optional filtering"""
+    try:
+        from tools import get_teacher_sessions_with_filter
+        
+        sessions = get_teacher_sessions_with_filter(request.teacher_id, request.filter_type)
+        
+        return {
+            "success": True,
+            "sessions": sessions,
+            "teacher_id": request.teacher_id,
+            "filter_type": request.filter_type
+        }
+        
+    except Exception as e:
+        print(f"❌ API Error getting teacher sessions: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "sessions": []
         }
 
 @app.get("/api/health")
