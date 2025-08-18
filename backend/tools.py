@@ -11,7 +11,7 @@ import os
 
 
 # Get credentials from environment variables - NO fallbacks for security
-SUPABASE_URL = 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
