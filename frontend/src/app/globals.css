@@ -90,3 +90,275 @@ input:focus, textarea:focus {
   background-size: 200% 200%;
   animation: gradient-shift 8s ease infinite;
 }
+
+/* Background-only animations */
+@keyframes bg-float-slow {
+  0%, 100% { 
+    transform: translateY(0px) translateX(0px); 
+  }
+  33% { 
+    transform: translateY(-20px) translateX(10px); 
+  }
+  66% { 
+    transform: translateY(-10px) translateX(-8px); 
+  }
+}
+
+@keyframes bg-float-medium {
+  0%, 100% { 
+    transform: translateY(0px) translateX(0px) scale(1); 
+  }
+  25% { 
+    transform: translateY(-15px) translateX(12px) scale(1.1); 
+  }
+  50% { 
+    transform: translateY(-8px) translateX(-10px) scale(0.9); 
+  }
+  75% { 
+    transform: translateY(-18px) translateX(6px) scale(1.05); 
+  }
+}
+
+@keyframes bg-morph {
+  0%, 100% { 
+    border-radius: 50% 50% 50% 50%;
+    transform: rotate(0deg);
+  }
+  25% { 
+    border-radius: 60% 40% 60% 40%;
+    transform: rotate(90deg);
+  }
+  50% { 
+    border-radius: 40% 60% 40% 60%;
+    transform: rotate(180deg);
+  }
+  75% { 
+    border-radius: 50% 50% 40% 60%;
+    transform: rotate(270deg);
+  }
+}
+
+@keyframes bg-breathe {
+  0%, 100% { 
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% { 
+    transform: scale(1.2);
+    opacity: 0.6;
+  }
+}
+
+@keyframes bg-drift {
+  0%, 100% { 
+    transform: translateX(0px) translateY(0px);
+  }
+  25% { 
+    transform: translateX(30px) translateY(-20px);
+  }
+  50% { 
+    transform: translateX(-20px) translateY(-40px);
+  }
+  75% { 
+    transform: translateX(10px) translateY(-10px);
+  }
+}
+
+/* Background animation classes */
+.bg-animate-float-slow {
+  animation: bg-float-slow 12s ease-in-out infinite;
+}
+
+.bg-animate-float-medium {
+  animation: bg-float-medium 8s ease-in-out infinite;
+}
+
+.bg-animate-morph {
+  animation: bg-morph 15s ease-in-out infinite;
+}
+
+.bg-animate-breathe {
+  animation: bg-breathe 6s ease-in-out infinite;
+}
+
+.bg-animate-drift {
+  animation: bg-drift 20s ease-in-out infinite;
+}
+
+/* Advanced particle system */
+@keyframes particle-orbit {
+  0% { 
+    transform: rotate(0deg) translateX(100px) rotate(0deg);
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { 
+    transform: rotate(360deg) translateX(100px) rotate(-360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes particle-spiral {
+  0% { 
+    transform: rotate(0deg) translateX(50px) scale(0.5);
+    opacity: 0;
+  }
+  25% { 
+    opacity: 1;
+    transform: rotate(90deg) translateX(75px) scale(0.8);
+  }
+  50% { 
+    transform: rotate(180deg) translateX(100px) scale(1);
+  }
+  75% { 
+    opacity: 1;
+    transform: rotate(270deg) translateX(75px) scale(0.8);
+  }
+  100% { 
+    transform: rotate(360deg) translateX(50px) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes wave-motion {
+  0%, 100% { 
+    transform: translateX(-100%) skewX(0deg);
+  }
+  50% { 
+    transform: translateX(100%) skewX(5deg);
+  }
+}
+
+@keyframes aurora {
+  0%, 100% { 
+    transform: translateX(-50%) translateY(0%) rotate(0deg);
+    opacity: 0.3;
+  }
+  25% { 
+    transform: translateX(-30%) translateY(-10%) rotate(2deg);
+    opacity: 0.6;
+  }
+  50% { 
+    transform: translateX(-70%) translateY(-5%) rotate(-1deg);
+    opacity: 0.8;
+  }
+  75% { 
+    transform: translateX(-40%) translateY(-15%) rotate(1deg);
+    opacity: 0.5;
+  }
+}
+
+@keyframes geometric-dance {
+  0%, 100% { 
+    transform: rotate(0deg) scale(1) translateX(0px);
+    border-radius: 20%;
+  }
+  25% { 
+    transform: rotate(90deg) scale(1.2) translateX(20px);
+    border-radius: 50%;
+  }
+  50% { 
+    transform: rotate(180deg) scale(0.8) translateX(-10px);
+    border-radius: 10%;
+  }
+  75% { 
+    transform: rotate(270deg) scale(1.1) translateX(15px);
+    border-radius: 40%;
+  }
+}
+
+@keyframes liquid-morph {
+  0%, 100% { 
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: rotate(0deg) scale(1);
+  }
+  25% { 
+    border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+    transform: rotate(90deg) scale(1.1);
+  }
+  50% { 
+    border-radius: 50% 60% 30% 60% / 30% 60% 70% 40%;
+    transform: rotate(180deg) scale(0.9);
+  }
+  75% { 
+    border-radius: 60% 40% 60% 40% / 70% 30% 50% 60%;
+    transform: rotate(270deg) scale(1.05);
+  }
+}
+
+@keyframes energy-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.1);
+    transform: scale(1);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.6), 0 0 80px rgba(59, 130, 246, 0.3);
+    transform: scale(1.05);
+  }
+}
+
+/* Advanced animation classes */
+.particle-orbit {
+  animation: particle-orbit 20s linear infinite;
+}
+
+.particle-spiral {
+  animation: particle-spiral 15s ease-in-out infinite;
+}
+
+.wave-motion {
+  animation: wave-motion 8s ease-in-out infinite;
+}
+
+.aurora-effect {
+  animation: aurora 12s ease-in-out infinite;
+}
+
+.geometric-dance {
+  animation: geometric-dance 10s ease-in-out infinite;
+}
+
+.liquid-morph {
+  animation: liquid-morph 18s ease-in-out infinite;
+}
+
+.energy-pulse {
+  animation: energy-pulse 4s ease-in-out infinite;
+}
+
+/* Gradient animations */
+@keyframes gradient-x {
+  0%, 100% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes gradient-y {
+  0%, 100% {
+    transform: translateY(-100%);
+  }
+  50% {
+    transform: translateY(100%);
+  }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 15s ease-in-out infinite;
+}
+
+.animate-gradient-y {
+  animation: gradient-y 20s ease-in-out infinite;
+}
+
+/* Subtle hover effects only */
+.hover-lift {
+  transition: transform 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}

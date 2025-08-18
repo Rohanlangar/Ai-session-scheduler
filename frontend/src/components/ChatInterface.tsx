@@ -233,9 +233,37 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
 
 
   return (
-    <div className="h-screen bg-white flex">
+    <div className="h-screen bg-white flex relative overflow-hidden">
+      {/* Advanced Background Animation */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Liquid morphing background */}
+        <div className="absolute top-10 right-10 w-32 h-32 bg-gradient-to-br from-gray-50 to-gray-100 liquid-morph opacity-15"></div>
+        <div className="absolute bottom-20 left-10 w-24 h-24 bg-gradient-to-tr from-gray-100 to-gray-200 liquid-morph opacity-12" style={{ animationDelay: '8s' }}></div>
+        
+        {/* Geometric dancing elements */}
+        <div className="absolute top-1/4 right-20 w-6 h-6 bg-gray-150 geometric-dance opacity-20"></div>
+        <div className="absolute bottom-1/4 left-20 w-8 h-8 bg-gray-100 geometric-dance opacity-15" style={{ animationDelay: '4s' }}></div>
+        
+        {/* Particle systems */}
+        <div className="absolute top-1/3 left-1/4 w-1 h-1">
+          <div className="absolute w-1.5 h-1.5 bg-blue-200 rounded-full particle-spiral opacity-25"></div>
+          <div className="absolute w-1 h-1 bg-purple-200 rounded-full particle-spiral opacity-20" style={{ animationDelay: '5s' }}></div>
+        </div>
+        
+        {/* Energy pulses */}
+        <div className="absolute top-2/3 right-1/3 w-3 h-3 bg-indigo-100 rounded-full energy-pulse opacity-30"></div>
+        <div className="absolute bottom-1/2 left-1/3 w-2 h-2 bg-cyan-100 rounded-full energy-pulse opacity-25" style={{ animationDelay: '3s' }}></div>
+        
+        {/* Floating gradient orbs */}
+        <div className="absolute top-1/5 left-10 w-12 h-12 bg-gradient-to-br from-blue-50 to-purple-50 rounded-full bg-animate-float-slow opacity-20"></div>
+        <div className="absolute bottom-1/5 right-20 w-8 h-8 bg-gradient-to-tr from-pink-50 to-indigo-50 rounded-full bg-animate-drift opacity-15" style={{ animationDelay: '6s' }}></div>
+        
+        {/* Moving gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-25 to-transparent opacity-10 animate-gradient-x"></div>
+      </div>
+
       {/* Chat Area - 70% */}
-      <div className="flex-1 flex flex-col" style={{ width: '70%' }}>
+      <div className="flex-1 flex flex-col relative z-10" style={{ width: '70%' }}>
         {/* Header */}
         <div className="bg-white px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -344,7 +372,7 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       </div>
 
       {/* Sessions Sidebar - 30% */}
-      <div className="bg-gray-50 border-l border-gray-200" style={{ width: '30%' }}>
+      <div className="bg-gray-50 border-l border-gray-200 relative z-10" style={{ width: '30%' }}>
         <div className="p-6 border-b border-gray-200 bg-white">
           <div className="flex justify-between items-center">
             <div>

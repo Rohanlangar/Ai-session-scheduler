@@ -11,9 +11,9 @@ import os
 
 
 # Get credentials from environment variables with fallbacks
-SUPABASE_URL =
-SUPABASE_KEY = 
-ANTHROPIC_API_KEY =
+SUPABASE_URL ="https://ipfzpnxdtackprxforqh.supabase.co"
+SUPABASE_KEY ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k"
+ANTHROPIC_API_KEY ="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"
 
 print(f"🔧 Using Supabase URL: {SUPABASE_URL}")
 print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Missing'}")
@@ -186,9 +186,9 @@ You are an intelligent AI session scheduler. Help students book sessions and tea
 4. **Teachers don't need to specify subjects - they can teach any subject**
 5. **Keep responses short:** "✅ Availability set for [date] from [time] to [time]"
 
-**Subject mapping (broad categories for related technologies):**
-- Python ecosystem: Flask/Django/FastAPI/Pandas/NumPy → "python"
-- React ecosystem: React/JSX/Next.js/Hooks/Redux → "react"
+**MANDATORY SUBJECT MAPPING - ALWAYS USE THESE BROAD CATEGORIES:**
+- Python ecosystem: Flask/Django/FastAPI/Pandas/NumPy/Data Science → "python"
+- React ecosystem: React/JSX/Next.js/Hooks/Redux/Components → "react"
 - Vue ecosystem: Vue/Nuxt/Vuex → "vue"  
 - Java ecosystem: Spring/Spring Boot/Hibernate/Maven → "java"
 - JavaScript ecosystem: Node.js/Express/Webpack/Babel → "javascript"
@@ -197,7 +197,15 @@ You are an intelligent AI session scheduler. Help students book sessions and tea
 - Mobile: Android/iOS/Flutter/React Native → "mobile"
 - DevOps: Docker/Kubernetes/AWS/CI/CD → "devops"
 
-**CRITICAL RULES:**
+**CRITICAL SESSION CREATION RULES:**
+- ALWAYS create sessions for MAIN SUBJECTS only (python, react, java, javascript, etc.)
+- NEVER create sessions for specific subtopics like "Flask basics" or "React hooks"
+- If student asks for "Flask session", create a "python" session
+- If student asks for "Next.js session", create a "react" session
+- If student asks for "Spring Boot session", create a "java" session
+- Sessions must be for BROAD SUBJECT CATEGORIES, not specific frameworks or concepts
+
+**WORKFLOW RULES:**
 - If input mentions "TEACHER" → ONLY use teacher tools (parse_teacher_availability, set_teacher_availability)
 - If input mentions "STUDENT" → ONLY use student tools (parse_student_request, check_existing_session, etc.)
 - NEVER mix teacher and student workflows
@@ -208,6 +216,7 @@ You are an intelligent AI session scheduler. Help students book sessions and tea
 **IMPORTANT:** 
 - Teachers: Use parse_teacher_availability() first, then set_teacher_availability()
 - Students: Use student workflow for session booking
+- ALWAYS use broad subject categories when creating sessions
 - Teachers don't need to specify subjects - they can teach any subject
 - If teacher message has date and time, process it immediately 
 """
@@ -252,6 +261,14 @@ This is a STUDENT booking sessions. Follow student workflow:
 3. Call check_existing_session() with the parsed subject and date
 4. Create new session OR update existing session with optimal timing
 
+CRITICAL: Sessions must be created for MAIN SUBJECTS only:
+- Flask/Django/FastAPI requests → create "python" session
+- React/Next.js/JSX requests → create "react" session  
+- Spring/Hibernate requests → create "java" session
+- Node.js/Express requests → create "javascript" session
+
+NEVER create sessions for specific subtopics or frameworks!
+
 Keep response short and friendly!
 """
         
@@ -276,46 +293,95 @@ Keep response short and friendly!
 
 # === HELPER FUNCTIONS ===
 
+def normalize_subject(subject: str) -> str:
+    """Normalize any subject to broad categories only.
+    
+    This ensures ALL session creation uses broad subjects like:
+    python, react, vue, java, javascript, database, web, mobile, devops
+    """
+    subject = subject.lower().strip()
+    
+    # Direct mapping for broad subjects
+    allowed_subjects = ["python", "react", "vue", "java", "javascript", "database", "web", "mobile", "devops"]
+    if subject in allowed_subjects:
+        return subject
+    
+    # Map specific frameworks/technologies to broad subjects
+    subject_mapping = {
+        # Python ecosystem
+        "flask": "python", "django": "python", "fastapi": "python", "py": "python",
+        "pandas": "python", "numpy": "python", "matplotlib": "python", "scikit": "python",
+        "tensorflow": "python", "pytorch": "python", "jupyter": "python",
+        
+        # React ecosystem
+        "nextjs": "react", "next.js": "react", "jsx": "react", "tsx": "react",
+        "hooks": "react", "redux": "react", "component": "react",
+        
+        # Vue ecosystem
+        "vuejs": "vue", "vue.js": "vue", "nuxt": "vue", "vuex": "vue",
+        
+        # Java ecosystem
+        "spring": "java", "springboot": "java", "spring boot": "java", 
+        "hibernate": "java", "maven": "java", "gradle": "java", "jpa": "java",
+        
+        # JavaScript ecosystem
+        "nodejs": "javascript", "node.js": "javascript", "node": "javascript",
+        "express": "javascript", "expressjs": "javascript", "js": "javascript",
+        "npm": "javascript", "yarn": "javascript", "webpack": "javascript", "babel": "javascript",
+        
+        # Database
+        "sql": "database", "mysql": "database", "postgresql": "database", 
+        "mongodb": "database", "db": "database",
+        
+        # Web development
+        "html": "web", "css": "web", "bootstrap": "web", "tailwind": "web",
+        "sass": "web", "scss": "web",
+        
+        # Mobile development
+        "android": "mobile", "kotlin": "mobile", "swift": "mobile", "ios": "mobile",
+        "flutter": "mobile", "dart": "mobile", "react native": "mobile",
+        
+        # DevOps/Cloud
+        "docker": "devops", "kubernetes": "devops", "aws": "devops", "azure": "devops",
+        "gcp": "devops", "ci/cd": "devops", "jenkins": "devops"
+    }
+    
+    # Return mapped subject or default to python
+    return subject_mapping.get(subject, "python")
+
 def extract_subject_and_timing(message: str) -> tuple:
-    """Extract subject and timing from user message"""
+    """Extract subject and timing from user message.
+    
+    IMPORTANT: Always returns BROAD SUBJECT CATEGORIES only:
+    - python, react, vue, java, javascript, database, web, mobile, devops
+    - Never returns specific frameworks like 'flask', 'fastapi', 'nextjs', etc.
+    """
     message_lower = message.lower()
     
-    # Comprehensive subject mapping - more specific keywords first
+    # Find the most relevant subject from the message
     subject = "python"  # default
     
-    # React ecosystem
-    if any(word in message_lower for word in ["react", "jsx", "tsx", "next.js", "nextjs", "react hook", "hooks", "redux", "react router", "component"]):
-        subject = "react"
-    # Vue ecosystem  
-    elif any(word in message_lower for word in ["vue", "vuejs", "vue.js", "nuxt", "vuex", "vue router"]):
-        subject = "vue"
-    # Java ecosystem
-    elif any(word in message_lower for word in ["java", "spring", "spring boot", "springboot", "hibernate", "maven", "gradle", "jpa", "jsp", "servlet"]):
-        subject = "java"
-    # JavaScript ecosystem
-    elif any(word in message_lower for word in ["javascript", "js", "node", "nodejs", "node.js", "express", "expressjs", "npm", "yarn", "webpack", "babel"]):
-        subject = "javascript"
-    # Python ecosystem - specific frameworks
-    elif "fastapi" in message_lower:
-        subject = "fastapi"
-    elif any(word in message_lower for word in ["flask", "flask-restful", "jinja", "werkzeug"]):
-        subject = "python"  # Flask maps to Python
-    elif any(word in message_lower for word in ["django", "django-rest", "drf", "django orm"]):
-        subject = "python"  # Django maps to Python
-    elif any(word in message_lower for word in ["python", "py", "pandas", "numpy", "matplotlib", "scikit", "tensorflow", "pytorch", "jupyter"]):
-        subject = "python"
-    # Database related
-    elif any(word in message_lower for word in ["sql", "mysql", "postgresql", "mongodb", "database", "db"]):
-        subject = "database"
-    # Web development general
-    elif any(word in message_lower for word in ["html", "css", "bootstrap", "tailwind", "sass", "scss"]):
-        subject = "web"
-    # Mobile development
-    elif any(word in message_lower for word in ["android", "kotlin", "swift", "ios", "flutter", "dart", "react native"]):
-        subject = "mobile"
-    # DevOps/Cloud
-    elif any(word in message_lower for word in ["docker", "kubernetes", "aws", "azure", "gcp", "devops", "ci/cd", "jenkins"]):
-        subject = "devops"
+    # Check for subject keywords in order of specificity
+    subject_keywords = {
+        "react": ["react", "jsx", "tsx", "next.js", "nextjs", "hooks", "redux", "component"],
+        "vue": ["vue", "vuejs", "vue.js", "nuxt", "vuex"],
+        "java": ["java", "spring", "springboot", "hibernate", "maven", "gradle", "jpa"],
+        "javascript": ["javascript", "js", "node", "nodejs", "express", "npm", "yarn", "webpack", "babel"],
+        "python": ["python", "py", "flask", "django", "fastapi", "pandas", "numpy", "matplotlib", "scikit", "tensorflow", "pytorch", "jupyter"],
+        "database": ["sql", "mysql", "postgresql", "mongodb", "database", "db"],
+        "web": ["html", "css", "bootstrap", "tailwind", "sass", "scss"],
+        "mobile": ["android", "kotlin", "swift", "ios", "flutter", "dart", "react native"],
+        "devops": ["docker", "kubernetes", "aws", "azure", "gcp", "devops", "ci/cd", "jenkins"]
+    }
+    
+    # Find the first matching subject
+    for broad_subject, keywords in subject_keywords.items():
+        if any(keyword in message_lower for keyword in keywords):
+            subject = broad_subject
+            break
+    
+    # Double-check with normalize_subject to ensure consistency
+    subject = normalize_subject(subject)
     
     # Parse timing
     start_time, end_time = parse_time_from_message(message)
@@ -466,6 +532,12 @@ def check_existing_session(input: str) -> str:
         subject = data["subject"].lower()
         date = data["date"]
         
+        # VALIDATION: Ensure only broad subjects are used
+        original_subject = subject
+        subject = normalize_subject(subject)
+        if original_subject != subject:
+            print(f"🔄 Mapped '{original_subject}' to broad category: '{subject}'")
+        
         print(f"🔍 Checking for {subject} session on {date}")
         
         sessions = supabase.table('sessions').select('*').eq('subject', subject).eq('date', date).eq('status', 'active').execute()
@@ -502,6 +574,12 @@ def create_new_session(input: str) -> str:
         date = data["date"]
         start_time = data["start_time"]
         end_time = data["end_time"]
+        
+        # VALIDATION: Ensure only broad subjects are used
+        original_subject = subject
+        subject = normalize_subject(subject)
+        if original_subject != subject:
+            print(f"🔄 Mapped '{original_subject}' to broad category: '{subject}'")
         
         print(f"🆕 Creating new {subject} session for {date} at {start_time}-{end_time}")
         

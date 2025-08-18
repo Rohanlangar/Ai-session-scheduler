@@ -36,17 +36,61 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white relative overflow-hidden">
-      {/* Subtle Background Animation */}
+      {/* Advanced Background Animation System */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gray-100 rounded-full opacity-60 animate-pulse"></div>
-        <div className="absolute top-1/2 -left-40 w-60 h-60 bg-gray-50 rounded-full opacity-40 animate-pulse" style={{ animationDelay: '2s' }}></div>
-        <div className="absolute bottom-20 right-1/4 w-40 h-40 bg-gray-100 rounded-full opacity-30 animate-pulse" style={{ animationDelay: '4s' }}></div>
-        
-        {/* Floating Elements */}
-        <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-gray-300 rounded-full animate-float"></div>
-        <div className="absolute top-1/3 right-1/3 w-1 h-1 bg-gray-400 rounded-full animate-float" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute bottom-1/3 left-1/3 w-1.5 h-1.5 bg-gray-300 rounded-full animate-float" style={{ animationDelay: '3s' }}></div>
-        <div className="absolute top-2/3 right-1/4 w-1 h-1 bg-gray-400 rounded-full animate-float" style={{ animationDelay: '5s' }}></div>
+        {/* Aurora-like gradient waves */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-blue-100 via-purple-50 to-pink-100 aurora-effect"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-l from-indigo-100 via-blue-50 to-cyan-100 aurora-effect" style={{ animationDelay: '4s' }}></div>
+        </div>
+
+        {/* Liquid morphing shapes */}
+        <div className="absolute -top-32 -right-32 w-64 h-64 bg-gradient-to-br from-gray-100 to-gray-200 liquid-morph opacity-30"></div>
+        <div className="absolute top-1/3 -left-32 w-48 h-48 bg-gradient-to-tr from-gray-50 to-gray-100 liquid-morph opacity-25" style={{ animationDelay: '6s' }}></div>
+        <div className="absolute bottom-10 right-1/4 w-32 h-32 bg-gradient-to-bl from-gray-100 to-gray-200 liquid-morph opacity-20" style={{ animationDelay: '12s' }}></div>
+
+        {/* Geometric dancing elements */}
+        <div className="absolute top-1/4 left-1/6 w-8 h-8 bg-gray-200 geometric-dance opacity-25"></div>
+        <div className="absolute top-2/3 right-1/5 w-6 h-6 bg-gray-300 geometric-dance opacity-30" style={{ animationDelay: '3s' }}></div>
+        <div className="absolute bottom-1/4 left-1/3 w-10 h-10 bg-gray-100 geometric-dance opacity-20" style={{ animationDelay: '7s' }}></div>
+
+        {/* Particle orbit system */}
+        <div className="absolute top-1/2 left-1/2 w-2 h-2">
+          <div className="absolute w-2 h-2 bg-blue-200 rounded-full particle-orbit opacity-40"></div>
+          <div className="absolute w-1.5 h-1.5 bg-purple-200 rounded-full particle-orbit opacity-35" style={{ animationDelay: '5s' }}></div>
+          <div className="absolute w-1 h-1 bg-pink-200 rounded-full particle-orbit opacity-30" style={{ animationDelay: '10s' }}></div>
+        </div>
+
+        {/* Spiral particle system */}
+        <div className="absolute top-1/4 right-1/3 w-1 h-1">
+          <div className="absolute w-2 h-2 bg-indigo-200 rounded-full particle-spiral opacity-35"></div>
+          <div className="absolute w-1.5 h-1.5 bg-cyan-200 rounded-full particle-spiral opacity-30" style={{ animationDelay: '3s' }}></div>
+        </div>
+
+        {/* Wave motion elements */}
+        <div className="absolute bottom-0 left-0 w-full h-32 opacity-10">
+          <div className="absolute bottom-0 w-full h-8 bg-gradient-to-r from-transparent via-gray-300 to-transparent wave-motion"></div>
+          <div className="absolute bottom-4 w-full h-6 bg-gradient-to-r from-transparent via-gray-400 to-transparent wave-motion" style={{ animationDelay: '2s' }}></div>
+        </div>
+
+        {/* Energy pulse elements */}
+        <div className="absolute top-1/3 left-1/4 w-4 h-4 bg-blue-100 rounded-full energy-pulse opacity-40"></div>
+        <div className="absolute bottom-1/3 right-1/4 w-3 h-3 bg-purple-100 rounded-full energy-pulse opacity-35" style={{ animationDelay: '2s' }}></div>
+
+        {/* Floating gradient orbs */}
+        <div className="absolute top-20 left-1/5 w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full bg-animate-float-slow opacity-20"></div>
+        <div className="absolute bottom-32 right-1/6 w-12 h-12 bg-gradient-to-tr from-pink-100 to-indigo-100 rounded-full bg-animate-float-medium opacity-25" style={{ animationDelay: '4s' }}></div>
+        <div className="absolute top-1/2 right-10 w-20 h-20 bg-gradient-to-bl from-cyan-100 to-blue-100 rounded-full bg-animate-drift opacity-15" style={{ animationDelay: '8s' }}></div>
+
+        {/* Moving gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-50 to-transparent opacity-20 animate-gradient-x"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-gray-50 to-transparent opacity-15 animate-gradient-y" style={{ animationDelay: '5s' }}></div>
+
+        {/* Subtle grid pattern */}
+        <div className="absolute inset-0 opacity-5" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(0,0,0,0.15) 1px, transparent 0)`,
+          backgroundSize: '20px 20px'
+        }}></div>
       </div>
 
       <div className="relative z-10">
@@ -78,7 +122,7 @@ export default function Home() {
               {user ? (
                 <Link
                   href="/dashboard"
-                  className="bg-black text-white px-8 py-4 rounded-lg hover:bg-gray-800 transition-all duration-200 flex items-center space-x-2 text-lg font-medium"
+                  className="bg-black text-white px-8 py-4 rounded-lg hover:bg-gray-800 transition-all duration-300 flex items-center space-x-2 text-lg font-medium hover-lift"
                 >
                   <Calendar className="w-5 h-5" />
                   <span>Go to Dashboard</span>
@@ -88,14 +132,14 @@ export default function Home() {
                 <>
                   <Link
                     href="/auth"
-                    className="bg-black text-white px-8 py-4 rounded-lg hover:bg-gray-800 transition-all duration-200 flex items-center space-x-2 text-lg font-medium"
+                    className="bg-black text-white px-8 py-4 rounded-lg hover:bg-gray-800 transition-all duration-300 flex items-center space-x-2 text-lg font-medium hover-lift"
                   >
                     <span>Get started</span>
                     <ArrowRight className="w-5 h-5" />
                   </Link>
                   <Link
                     href="#features"
-                    className="text-gray-600 px-8 py-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 flex items-center space-x-2 text-lg font-medium"
+                    className="text-gray-600 px-8 py-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 flex items-center space-x-2 text-lg font-medium hover-lift"
                   >
                     <span>Learn more</span>
                   </Link>
@@ -119,7 +163,7 @@ export default function Home() {
           </div>
           
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-200">
+            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-300 hover-lift">
               <div className="w-16 h-16 bg-gray-900 rounded-xl flex items-center justify-center mx-auto mb-6">
                 <Calendar className="w-8 h-8 text-white" />
               </div>
@@ -129,7 +173,7 @@ export default function Home() {
               </p>
             </div>
             
-            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-200">
+            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-300 hover-lift">
               <div className="w-16 h-16 bg-gray-900 rounded-xl flex items-center justify-center mx-auto mb-6">
                 <Users className="w-8 h-8 text-white" />
               </div>
@@ -139,7 +183,7 @@ export default function Home() {
               </p>
             </div>
             
-            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-200">
+            <div className="text-center p-8 rounded-xl bg-white border border-gray-200 hover:shadow-lg transition-all duration-300 hover-lift">
               <div className="w-16 h-16 bg-gray-900 rounded-xl flex items-center justify-center mx-auto mb-6">
                 <Clock className="w-8 h-8 text-white" />
               </div>
