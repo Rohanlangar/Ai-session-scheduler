@@ -6,9 +6,23 @@ import uvicorn
 app = FastAPI(title="AI Session Scheduler API")
 
 # CORS - Allow frontend to connect
+import os
+
+# CORS - Allow frontend to connect
+allowed_origins = [
+    "https://ai-session-scheduler-vr6n.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:8000"
+]
+
+# Add CORS_ORIGINS from environment if available
+cors_origins_env = os.getenv("CORS_ORIGINS")
+if cors_origins_env:
+    allowed_origins.extend(cors_origins_env.split(","))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

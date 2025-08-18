@@ -11,8 +11,10 @@ import os
 
 
 # Get credentials from environment variables with fallbacks
-SUPABASE_URL =
-SUPABASE_KEY =
+SUPABASE_URL ="https://ipfzpnxdtackprxforqh.supabase.co"
+SUPABASE_KEY ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwZnpwbnhkdGFja3ByeGZvcnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMDA1NTYsImV4cCI6MjA2OTg3NjU1Nn0.LXfpdquRCyv3QZAYDFxZmM6FNOcl24IDRUTMfvlGh5k"
+ANTHROPIC_API_KEY ="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"
+
 print(f"🔧 Using Supabase URL: {SUPABASE_URL}")
 print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Missing'}")
 
