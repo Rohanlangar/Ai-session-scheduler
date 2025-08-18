@@ -10,10 +10,18 @@ from typing import TypedDict, List, Optional
 import os   
 
 
-# Get credentials from environment variables with fallbacks
-SUPABASE_URL =
-SUPABASE_KEY =
-ANTHROPIC_API_KEY =
+# Get credentials from environment variables - NO fallbacks for security
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+# Validate required environment variables
+if not SUPABASE_URL:
+    raise ValueError("SUPABASE_URL environment variable is required")
+if not SUPABASE_KEY:
+    raise ValueError("SUPABASE_KEY environment variable is required")
+if not ANTHROPIC_API_KEY:
+    raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
 print(f"🔧 Using Supabase URL: {SUPABASE_URL}")
 print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Missing'}")
