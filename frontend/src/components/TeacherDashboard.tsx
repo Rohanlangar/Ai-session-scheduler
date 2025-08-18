@@ -31,49 +31,60 @@ export default function TeacherDashboard({ teacher }: TeacherDashboardProps) {
     try {
       console.log('Fetching sessions for teacher:', teacher.id, 'with filter:', sessionFilter)
       
-      // Use the new backend API endpoint
-      const response = await fetch('/api/teacher-sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          teacher_id: teacher.id,
-          filter_type: sessionFilter
-        })
-      })
-      
-      const result = await response.json()
-      console.log('API Response:', result)
-      
-      if (result.success) {
-        console.log('Sessions found:', result.sessions.length)
-        setSessions(result.sessions)
-      } else {
-        console.error('Failed to fetch sessions:', result.error)
-        // Fallback to direct Supabase query
-        console.log('Falling back to direct Supabase query...')
-        const { data, error } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('teacher_id', teacher.id)
-          .order('date', { ascending: true })
-        
-        console.log('Supabase fallback result:', { data, error })
-        if (data) setSessions(data)
-      }
-    } catch (error) {
-      console.error('Error fetching sessions:', error)
-      // Fallback to direct Supabase query
-      console.log('Exception occurred, falling back to direct Supabase query...')
-      const { data, error: supabaseError } = await supabase
+      // Direct Supabase query - simple and clean
+      const { data, error } = await supabase
         .from('sessions')
         .select('*')
         .eq('teacher_id', teacher.id)
         .order('date', { ascending: true })
       
-      console.log('Supabase fallback result:', { data, error: supabaseError })
-      if (data) setSessions(data)
+      if (error) {
+        console.error('Supabase error:', error)
+        setSessions([])
+        return
+      }
+
+      if (!data) {
+        console.log('No sessions found')
+        setSessions([])
+        return
+      }
+
+      console.log('Raw sessions from DB:', data.length)
+
+      // Apply date filtering
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Reset time to start of day
+      
+      let filteredSessions = data
+
+      if (sessionFilter === 'today_future') {
+        filteredSessions = data.filter(session => {
+          const sessionDate = new Date(session.date)
+          sessionDate.setHours(0, 0, 0, 0)
+          return sessionDate >= today
+        })
+      } else if (sessionFilter === 'today') {
+        filteredSessions = data.filter(session => {
+          const sessionDate = new Date(session.date)
+          sessionDate.setHours(0, 0, 0, 0)
+          return sessionDate.getTime() === today.getTime()
+        })
+      } else if (sessionFilter === 'future') {
+        filteredSessions = data.filter(session => {
+          const sessionDate = new Date(session.date)
+          sessionDate.setHours(0, 0, 0, 0)
+          return sessionDate > today
+        })
+      }
+      // 'all' filter shows everything, no filtering needed
+
+      console.log('Filtered sessions:', filteredSessions.length)
+      setSessions(filteredSessions)
+      
+    } catch (error) {
+      console.error('Error fetching sessions:', error)
+      setSessions([])
     } finally {
       setLoading(false)
     }
