@@ -287,8 +287,14 @@ Keep response short and friendly!
             else:
                 return "✅ I understand you want to book a session! Please get a valid Anthropic API key to use the full AI features."
         
+        # Include system prompt in messages
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": contextual_input}
+        ]
+        
         response = graph.invoke({
-            "messages": [{"role": "user", "content": contextual_input}]
+            "messages": messages
         })
         
         # Extract the final AI message
@@ -1001,17 +1007,25 @@ tools = [
 
 # Create the agent with proper LangGraph syntax
 if llm is not None:
-    agent = create_react_agent(llm, tools, state_modifier=system_prompt)
+    try:
+        # Create agent with system message instead of state_modifier
+        from langchain_core.messages import SystemMessage
+        
+        # Create the agent with tools
+        agent = create_react_agent(llm, tools)
+        
+        # Create the graph
+        class SessionAgentState(TypedDict):
+            messages: List[dict]
 
-    # Create the graph
-    class SessionAgentState(TypedDict):
-        messages: List[dict]
-
-    graph_builder = StateGraph(SessionAgentState)
-    graph_builder.add_node("agent", agent)
-    graph_builder.set_entry_point("agent")
-    graph = graph_builder.compile()
-    print("✅ LangGraph agent created successfully")
+        graph_builder = StateGraph(SessionAgentState)
+        graph_builder.add_node("agent", agent)
+        graph_builder.set_entry_point("agent")
+        graph = graph_builder.compile()
+        print("✅ LangGraph agent created successfully")
+    except Exception as e:
+        print(f"❌ Error creating LangGraph agent: {e}")
+        graph = None
 else:
     graph = None
     print("⚠️ LangGraph agent not created - using mock responses")
