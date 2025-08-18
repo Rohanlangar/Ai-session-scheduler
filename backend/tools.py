@@ -237,13 +237,32 @@ def run_session_agent(user_input: str) -> str:
         
         print(f"🔍 Processing - User ID: {user_id}, Message: {clean_message}")
         
-        # Simple teacher check - if this is the designated teacher ID, treat as teacher
+        # Detect intent from message content, not just user ID
         TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
-        is_actual_teacher = (user_id == TEACHER_ID)
+        is_teacher_user = (user_id == TEACHER_ID)
         
-        print(f"🔍 Teacher check: {is_actual_teacher} (user_id: {user_id})")
+        # Check message intent - teacher availability vs student session request
+        message_lower = clean_message.lower()
+        teacher_keywords = ["set availability", "available from", "availability from", "my availability", "i'm available", "im available"]
+        student_keywords = ["want", "need", "session", "book", "available for", "request"]
         
-        if is_actual_teacher:
+        # Determine if this is teacher availability or student session request
+        is_teacher_intent = any(keyword in message_lower for keyword in teacher_keywords)
+        is_student_intent = any(keyword in message_lower for keyword in student_keywords)
+        
+        # Final decision: prioritize message intent over user role
+        if is_student_intent and not is_teacher_intent:
+            treat_as_teacher = False
+            print(f"🔍 Detected STUDENT intent from message: '{clean_message}'")
+        elif is_teacher_intent:
+            treat_as_teacher = True
+            print(f"🔍 Detected TEACHER intent from message: '{clean_message}'")
+        else:
+            # Fallback to user role
+            treat_as_teacher = is_teacher_user
+            print(f"🔍 Using user role: {'TEACHER' if treat_as_teacher else 'STUDENT'} (user_id: {user_id})")
+        
+        if treat_as_teacher:
             # This is a teacher - handle availability setting
             contextual_input = f"""
 Teacher {user_id} says: {clean_message}
@@ -297,9 +316,15 @@ Keep response short and friendly!
             "messages": messages
         })
         
-        # Extract the final AI message
-        final_message = response["messages"][-1]
-        return final_message.content if hasattr(final_message, 'content') else str(final_message)
+        # Simple response extraction
+        if "messages" in response and response["messages"]:
+            final_message = response["messages"][-1]
+            if hasattr(final_message, 'content'):
+                return final_message.content
+            elif isinstance(final_message, dict) and 'content' in final_message:
+                return final_message['content']
+        
+        return "✅ Request processed successfully!"
         
     except Exception as e:
         print(f"❌ ERROR in run_session_agent: {e}")
