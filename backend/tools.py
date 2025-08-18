@@ -522,31 +522,45 @@ def parse_student_request(input: str) -> str:
         # If validation passes, proceed with parsing
         subject, start_time, end_time = extract_subject_and_timing(message)
         
-        # Parse date from student message (similar to teacher logic)
+        # Parse date from student message - SAME LOGIC AS TEACHER
         message_lower = message.lower()
         today = datetime.now()
         
-        if "saturday" in message_lower:
-            days_ahead = 5 - today.weekday()  # Saturday is 5
-            if days_ahead <= 0:
+        # Flexible date parsing with typo support (same as teacher parsing)
+        day_patterns = {
+            0: ["monday", "mon"],  # Monday
+            1: ["tuesday", "tue", "tuseday", "tues"],  # Tuesday (with typo support)
+            2: ["wednesday", "wed", "wednes"],  # Wednesday
+            3: ["thursday", "thu", "thurs"],  # Thursday
+            4: ["friday", "fri"],  # Friday
+            5: ["saturday", "sat"],  # Saturday
+            6: ["sunday", "sun"]  # Sunday
+        }
+        
+        target_day = None
+        for day_num, patterns in day_patterns.items():
+            if any(pattern in message_lower for pattern in patterns):
+                target_day = day_num
+                break
+        
+        if target_day is not None:
+            # Find next occurrence of the target day
+            days_ahead = target_day - today.weekday()
+            if days_ahead <= 0:  # Target day already happened this week
                 days_ahead += 7
             target_date = today + timedelta(days=days_ahead)
             session_date = target_date.strftime('%Y-%m-%d')
-        elif "friday" in message_lower:
-            days_ahead = 4 - today.weekday()  # Friday is 4
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            session_date = target_date.strftime('%Y-%m-%d')
-        elif "sunday" in message_lower:
-            days_ahead = 6 - today.weekday()  # Sunday is 6
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            session_date = target_date.strftime('%Y-%m-%d')
-        else:
-            # Default to today if no specific day mentioned
+            print(f"🗓️ Student parsed day: {list(day_patterns[target_day])[0].title()} -> {session_date}")
+        elif "tomorrow" in message_lower:
+            session_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            print(f"🗓️ Student parsed: Tomorrow -> {session_date}")
+        elif "today" in message_lower:
             session_date = today.strftime('%Y-%m-%d')
+            print(f"🗓️ Student parsed: Today -> {session_date}")
+        else:
+            # Default to tomorrow if no specific date mentioned
+            session_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            print(f"🗓️ Student default: Tomorrow -> {session_date}")
         
         result = {
             "student_id": student_id,
