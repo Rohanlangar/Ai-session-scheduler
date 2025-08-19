@@ -192,26 +192,23 @@ You are an intelligent AI session scheduler. Help students book sessions and tea
 2. **Call set_teacher_availability()** with the parsed data
 3. **NEVER call student session tools for teachers**
 4. **Teachers don't need to specify subjects - they can teach any subject**
-5. **Keep responses short:** "✅ Availability set for [date] from [time] to [time]"
+5. **ALWAYS provide a friendly response** confirming the availability was set
+6. **Example responses:** 
+   - "✅ Perfect! I've set your availability for Monday from 2:00 PM to 5:00 PM"
+   - "✅ Great! Your availability for tomorrow 12-4 PM has been saved"
 
-**MANDATORY SUBJECT MAPPING - ALWAYS USE THESE BROAD CATEGORIES:**
-- Python ecosystem: Flask/Django/FastAPI/Pandas/NumPy/Data Science → "python"
-- React ecosystem: React/JSX/Next.js/Hooks/Redux/Components → "react"
-- Vue ecosystem: Vue/Nuxt/Vuex → "vue"  
-- Java ecosystem: Spring/Spring Boot/Hibernate/Maven → "java"
-- JavaScript ecosystem: Node.js/Express/Webpack/Babel → "javascript"
-- Database: SQL/MySQL/PostgreSQL/MongoDB → "database"
-- Web: HTML/CSS/Bootstrap/Tailwind → "web"
-- Mobile: Android/iOS/Flutter/React Native → "mobile"
-- DevOps: Docker/Kubernetes/AWS/CI/CD → "devops"
+**INTELLIGENT SUBJECT MAPPING:**
+- The system now uses AI to intelligently map ANY technology to broad categories
+- Examples: LangChain/Streamlit/OpenAI → "python", Next.js/Gatsby → "react"
+- Students can request ANY technology - the system will automatically categorize it
+- Sessions are created for broad categories but can cover specific technologies within them
 
 **CRITICAL SESSION CREATION RULES:**
 - ALWAYS create sessions for MAIN SUBJECTS only (python, react, java, javascript, etc.)
-- NEVER create sessions for specific subtopics like "Flask basics" or "React hooks"
-- If student asks for "Flask session", create a "python" session
-- If student asks for "Next.js session", create a "react" session
-- If student asks for "Spring Boot session", create a "java" session
-- Sessions must be for BROAD SUBJECT CATEGORIES, not specific frameworks or concepts
+- The AI will automatically map specific technologies to broad categories
+- Students can ask for "LangChain session" and it will create a "python" session
+- Students can ask for "Next.js session" and it will create a "react" session
+- Trust the AI subject mapping - it handles new and emerging technologies
 
 **WORKFLOW RULES:**
 - If input mentions "TEACHER" → ONLY use teacher tools (parse_teacher_availability, set_teacher_availability)
@@ -301,7 +298,7 @@ Keep response short and friendly!
         
         if llm is None:
             # Mock response for testing when API key is invalid
-            if is_actual_teacher:
+            if treat_as_teacher:
                 return "✅ I understand you want to set your availability! Please get a valid Anthropic API key to use the full AI features."
             else:
                 return "✅ I understand you want to book a session! Please get a valid Anthropic API key to use the full AI features."
@@ -332,12 +329,56 @@ Keep response short and friendly!
 
 # === HELPER FUNCTIONS ===
 
-def normalize_subject(subject: str) -> str:
-    """Normalize any subject to broad categories only.
+def normalize_subject_with_ai(subject: str) -> str:
+    """Use AI to intelligently map any subject to broad categories.
     
-    This ensures ALL session creation uses broad subjects like:
-    python, react, vue, java, javascript, database, web, mobile, devops
+    This allows for flexible subject recognition including new technologies
+    like LangChain, Streamlit, etc.
     """
+    try:
+        # Initialize Claude
+        llm = ChatAnthropic(
+            model="claude-3-haiku-20240307",
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0
+        )
+        
+        prompt = f"""
+        Map the following technology/subject to ONE of these broad categories:
+        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, pandas, etc.)
+        - react (for React, Next.js, JSX, Redux, etc.)
+        - vue (for Vue.js, Nuxt, Vuex, etc.)
+        - java (for Java, Spring, Hibernate, etc.)
+        - javascript (for Node.js, Express, vanilla JS, etc.)
+        - database (for SQL, MySQL, MongoDB, PostgreSQL, etc.)
+        - web (for HTML, CSS, Bootstrap, Tailwind, etc.)
+        - mobile (for Android, iOS, Flutter, React Native, etc.)
+        - devops (for Docker, Kubernetes, AWS, CI/CD, etc.)
+        
+        Subject to map: "{subject}"
+        
+        Return ONLY the broad category name (e.g., "python", "react", etc.). No explanation.
+        """
+        
+        response = llm.invoke(prompt)
+        mapped_subject = response.content.strip().lower()
+        
+        # Validate the response is one of our allowed subjects
+        allowed_subjects = ["python", "react", "vue", "java", "javascript", "database", "web", "mobile", "devops"]
+        if mapped_subject in allowed_subjects:
+            print(f"🤖 AI mapped '{subject}' to '{mapped_subject}'")
+            return mapped_subject
+        else:
+            print(f"⚠️ AI returned invalid subject '{mapped_subject}', defaulting to 'python'")
+            return "python"
+            
+    except Exception as e:
+        print(f"❌ AI subject mapping failed: {e}")
+        # Fallback to manual mapping
+        return normalize_subject_manual(subject)
+
+def normalize_subject_manual(subject: str) -> str:
+    """Fallback manual subject mapping"""
     subject = subject.lower().strip()
     
     # Direct mapping for broad subjects
@@ -351,6 +392,7 @@ def normalize_subject(subject: str) -> str:
         "flask": "python", "django": "python", "fastapi": "python", "py": "python",
         "pandas": "python", "numpy": "python", "matplotlib": "python", "scikit": "python",
         "tensorflow": "python", "pytorch": "python", "jupyter": "python",
+        "langchain": "python", "streamlit": "python", "openai": "python",
         
         # React ecosystem
         "nextjs": "react", "next.js": "react", "jsx": "react", "tsx": "react",
@@ -387,6 +429,10 @@ def normalize_subject(subject: str) -> str:
     
     # Return mapped subject or default to python
     return subject_mapping.get(subject, "python")
+
+def normalize_subject(subject: str) -> str:
+    """Main subject normalization function - tries AI first, falls back to manual"""
+    return normalize_subject_with_ai(subject)
 
 def extract_subject_and_timing(message: str) -> tuple:
     """Extract subject and timing from user message.
