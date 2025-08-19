@@ -29,6 +29,9 @@ print(f"🔧 Using Anthropic API: {'✅ Set' if ANTHROPIC_API_KEY else '❌ Miss
 # Create Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# DESIGNATED TEACHER ID - Only this user can set teacher availability
+TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
+
 def extract_user_id_from_message(message: str) -> tuple:
     """Extract user ID from message format"""
     if message.startswith("Student "):
@@ -176,54 +179,35 @@ except Exception as e:
 
 # System prompt for the agent
 system_prompt = """
-You are an intelligent AI session scheduler. Help students book sessions and teachers set availability.
+You are an intelligent AI session scheduler. Your role is determined by the user type:
 
-**FOR STUDENTS (message starts with "Student"):**
-1. **Call parse_student_request()** to extract subject, timing, and date from student message
-2. **Use the session_date from parse_student_request result** - DO NOT use get_current_date()
-3. **Call check_existing_session()** with the subject and session_date from step 1
-4. **If session exists (exists=True):** 
-   - First call analyze_timing_conflict() to get AI recommendation for optimal timing
-   - Then call update_existing_session() to add student with AI-optimized timing
-5. **If session doesn't exist (exists=False):** Call create_new_session() with session_date from step 1
+**FOR TEACHERS (user_id = e4bcab2f-8da5-4a78-85e8-094f4d7ac308):**
+- ONLY job: Set teacher availability using parse_teacher_availability() and set_teacher_availability()
+- Teachers can teach ANY subject - don't ask for subject clarification
+- Respond with friendly confirmation after setting availability
+- Example: "✅ Your availability for Saturday 12-2 PM has been set!"
 
-**FOR TEACHERS (contextual input mentions "TEACHER"):**
-1. **Call parse_teacher_availability()** to extract teacher_id, date, and timing
-2. **Call set_teacher_availability()** with the parsed data
-3. **NEVER call student session tools for teachers**
-4. **Teachers don't need to specify subjects - they can teach any subject**
-5. **ALWAYS provide a friendly response** confirming the availability was set
-6. **Example responses:** 
-   - "✅ Perfect! I've set your availability for Monday from 2:00 PM to 5:00 PM"
-   - "✅ Great! Your availability for tomorrow 12-4 PM has been saved"
+**FOR ALL OTHER USERS (Students):**
+- Handle session booking using student workflow
+- Use AI to intelligently map ANY subject/technology to broad categories
+- Follow this workflow:
+  1. Call parse_student_request() to extract subject, timing, and date
+  2. Call check_existing_session() with the parsed subject and date  
+  3. If session exists: call analyze_timing_conflict() then update_existing_session()
+  4. If session doesn't exist: call create_new_session()
 
 **INTELLIGENT SUBJECT MAPPING:**
-- The system now uses AI to intelligently map ANY technology to broad categories
-- Examples: LangChain/Streamlit/OpenAI → "python", Next.js/Gatsby → "react"
-- Students can request ANY technology - the system will automatically categorize it
-- Sessions are created for broad categories but can cover specific technologies within them
+- Use AI to map ANY technology to broad categories automatically
+- Examples: "langchain" → "python", "AWS" → "devops", "Next.js" → "react"
+- Students can request ANY technology - the system will categorize it intelligently
+- Sessions are created for broad categories but cover specific technologies
 
-**CRITICAL SESSION CREATION RULES:**
-- ALWAYS create sessions for MAIN SUBJECTS only (python, react, java, javascript, etc.)
-- The AI will automatically map specific technologies to broad categories
-- Students can ask for "LangChain session" and it will create a "python" session
-- Students can ask for "Next.js session" and it will create a "react" session
-- Trust the AI subject mapping - it handles new and emerging technologies
-
-**WORKFLOW RULES:**
-- If input mentions "TEACHER" → ONLY use teacher tools (parse_teacher_availability, set_teacher_availability)
-- If input mentions "STUDENT" → ONLY use student tools (parse_student_request, check_existing_session, etc.)
-- NEVER mix teacher and student workflows
-- Teachers set availability for ANY subject - don't ask for subject clarification
-- Students must specify both subject and timing
+**CRITICAL RULES:**
+- User role determines workflow - no complex intent detection needed
+- Teachers (specific user_id) → teacher availability workflow only
+- Everyone else → student session booking workflow  
+- Always use AI for subject mapping - no hardcoded lists
 - Keep responses short and friendly
-
-**IMPORTANT:** 
-- Teachers: Use parse_teacher_availability() first, then set_teacher_availability()
-- Students: Use student workflow for session booking
-- ALWAYS use broad subject categories when creating sessions
-- Teachers don't need to specify subjects - they can teach any subject
-- If teacher message has date and time, process it immediately 
 """
 
 def run_session_agent(user_input: str) -> str:
@@ -234,71 +218,49 @@ def run_session_agent(user_input: str) -> str:
         
         print(f"🔍 Processing - User ID: {user_id}, Message: {clean_message}")
         
-        # Detect intent from message content, not just user ID
-        TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
-        is_teacher_user = (user_id == TEACHER_ID)
+        # SIMPLIFIED ROLE DETECTION - Only check user ID
+        is_designated_teacher = (user_id == TEACHER_ID)
         
-        # Check message intent - teacher availability vs student session request
-        message_lower = clean_message.lower()
-        teacher_keywords = ["set availability", "available from", "availability from", "my availability", "i'm available", "im available"]
-        student_keywords = ["want", "need", "session", "book", "available for", "request"]
-        
-        # Determine if this is teacher availability or student session request
-        is_teacher_intent = any(keyword in message_lower for keyword in teacher_keywords)
-        is_student_intent = any(keyword in message_lower for keyword in student_keywords)
-        
-        # Final decision: prioritize message intent over user role
-        if is_student_intent and not is_teacher_intent:
-            treat_as_teacher = False
-            print(f"🔍 Detected STUDENT intent from message: '{clean_message}'")
-        elif is_teacher_intent:
-            treat_as_teacher = True
-            print(f"🔍 Detected TEACHER intent from message: '{clean_message}'")
-        else:
-            # Fallback to user role
-            treat_as_teacher = is_teacher_user
-            print(f"🔍 Using user role: {'TEACHER' if treat_as_teacher else 'STUDENT'} (user_id: {user_id})")
-        
-        if treat_as_teacher:
-            # This is a teacher - handle availability setting
+        if is_designated_teacher:
+            # This is the designated teacher - handle availability setting
+            print(f"👨‍🏫 TEACHER detected: {user_id}")
             contextual_input = f"""
-Teacher {user_id} says: {clean_message}
+TEACHER {user_id} says: {clean_message}
 
-This is a TEACHER setting availability. Teachers can teach ANY subject, so don't ask for subject clarification.
+This user is the designated TEACHER. Their ONLY job is setting availability.
 Follow teacher workflow:
-1. Call parse_teacher_availability() to extract date and timing from the message
-2. Call set_teacher_availability() with the parsed data
+1. Call parse_teacher_availability() to extract date and timing from message
+2. Call set_teacher_availability() with the parsed data  
 3. Do NOT call any student session tools
-4. Do NOT ask for subject - teachers can teach any subject
+4. Teachers can teach ANY subject - don't ask for subject clarification
+5. Provide friendly confirmation response
 
-If the message contains time information (like "12pm to 4pm" or "Friday 12-5 PM"), process it immediately.
-Keep response short and friendly!
+Process any message from teacher as availability setting.
 """
         else:
             # This is a student - handle session booking
+            print(f"👨‍🎓 STUDENT detected: {user_id}")
             contextual_input = f"""
-Student {user_id} wants: {clean_message}
+STUDENT {user_id} says: {clean_message}
 
-This is a STUDENT booking sessions. Follow student workflow:
+This is a STUDENT requesting session booking. Follow student workflow:
 1. Call parse_student_request() to get subject, timing, and date from message
-2. Use the parsed date from the student request (not current date)
+2. Use AI to intelligently map the subject to broad categories (python, react, java, etc.)
 3. Call check_existing_session() with the parsed subject and date
-4. Create new session OR update existing session with optimal timing
+4. Create new session OR update existing session based on availability
 
-CRITICAL: Sessions must be created for MAIN SUBJECTS only:
-- Flask/Django/FastAPI requests → create "python" session
-- React/Next.js/JSX requests → create "react" session  
-- Spring/Hibernate requests → create "java" session
-- Node.js/Express requests → create "javascript" session
-
-NEVER create sessions for specific subtopics or frameworks!
+IMPORTANT: 
+- Use AI for ALL subject mapping - accept ANY technology/subject
+- Examples: "langchain" → "python", "AWS" → "devops", "AI" → "python"
+- Let AI handle the intelligent categorization
+- Don't validate subjects manually
 
 Keep response short and friendly!
 """
         
         if llm is None:
             # Mock response for testing when API key is invalid
-            if treat_as_teacher:
+            if is_designated_teacher:
                 return "✅ I understand you want to set your availability! Please get a valid Anthropic API key to use the full AI features."
             else:
                 return "✅ I understand you want to book a session! Please get a valid Anthropic API key to use the full AI features."
@@ -325,7 +287,7 @@ Keep response short and friendly!
         
     except Exception as e:
         print(f"❌ ERROR in run_session_agent: {e}")
-        return f"I understand you want to help. Let me assist you with that!"
+        return f"I understand your request. Let me help you with that!"
 
 # === HELPER FUNCTIONS ===
 
@@ -333,11 +295,11 @@ def normalize_subject_with_ai(subject: str) -> str:
     """Use AI to intelligently map any subject to broad categories.
     
     This allows for flexible subject recognition including new technologies
-    like LangChain, Streamlit, etc.
+    like LangChain, Streamlit, AI, Machine Learning, etc.
     """
     try:
         # Initialize Claude
-        llm = ChatAnthropic(
+        claude = ChatAnthropic(
             model="claude-3-haiku-20240307",
             api_key=ANTHROPIC_API_KEY,
             temperature=0
@@ -345,28 +307,28 @@ def normalize_subject_with_ai(subject: str) -> str:
         
         prompt = f"""
         Map the following technology/subject to ONE of these broad categories:
-        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, pandas, etc.)
-        - react (for React, Next.js, JSX, Redux, etc.)
-        - vue (for Vue.js, Nuxt, Vuex, etc.)
-        - java (for Java, Spring, Hibernate, etc.)
-        - javascript (for Node.js, Express, vanilla JS, etc.)
+        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, pandas, AI, Machine Learning, OpenAI, etc.)
+        - react (for React, Next.js, JSX, Redux, Gatsby, etc.)
+        - vue (for Vue.js, Nuxt, Vuex, etc.)  
+        - java (for Java, Spring, Hibernate, Spring Boot, etc.)
+        - javascript (for Node.js, Express, vanilla JS, TypeScript, etc.)
         - database (for SQL, MySQL, MongoDB, PostgreSQL, etc.)
-        - web (for HTML, CSS, Bootstrap, Tailwind, etc.)
-        - mobile (for Android, iOS, Flutter, React Native, etc.)
-        - devops (for Docker, Kubernetes, AWS, CI/CD, etc.)
+        - web (for HTML, CSS, Bootstrap, Tailwind, SASS, etc.)
+        - mobile (for Android, iOS, Flutter, React Native, Swift, Kotlin, etc.)
+        - devops (for Docker, Kubernetes, AWS, Azure, GCP, CI/CD, Jenkins, etc.)
         
         Subject to map: "{subject}"
         
-        Return ONLY the broad category name (e.g., "python", "react", etc.). No explanation.
+        Return ONLY the broad category name (e.g., "python", "react", etc.). No explanation needed.
         """
         
-        response = llm.invoke(prompt)
+        response = claude.invoke(prompt)
         mapped_subject = response.content.strip().lower()
         
         # Validate the response is one of our allowed subjects
         allowed_subjects = ["python", "react", "vue", "java", "javascript", "database", "web", "mobile", "devops"]
         if mapped_subject in allowed_subjects:
-            print(f"🤖 AI mapped '{subject}' to '{mapped_subject}'")
+            print(f"🤖 AI mapped '{subject}' → '{mapped_subject}'")
             return mapped_subject
         else:
             print(f"⚠️ AI returned invalid subject '{mapped_subject}', defaulting to 'python'")
@@ -378,7 +340,7 @@ def normalize_subject_with_ai(subject: str) -> str:
         return normalize_subject_manual(subject)
 
 def normalize_subject_manual(subject: str) -> str:
-    """Fallback manual subject mapping"""
+    """Fallback manual subject mapping if AI fails"""
     subject = subject.lower().strip()
     
     # Direct mapping for broad subjects
@@ -386,89 +348,99 @@ def normalize_subject_manual(subject: str) -> str:
     if subject in allowed_subjects:
         return subject
     
-    # Map specific frameworks/technologies to broad subjects
-    subject_mapping = {
-        # Python ecosystem
-        "flask": "python", "django": "python", "fastapi": "python", "py": "python",
-        "pandas": "python", "numpy": "python", "matplotlib": "python", "scikit": "python",
-        "tensorflow": "python", "pytorch": "python", "jupyter": "python",
-        "langchain": "python", "streamlit": "python", "openai": "python",
-        
-        # React ecosystem
-        "nextjs": "react", "next.js": "react", "jsx": "react", "tsx": "react",
-        "hooks": "react", "redux": "react", "component": "react",
-        
-        # Vue ecosystem
-        "vuejs": "vue", "vue.js": "vue", "nuxt": "vue", "vuex": "vue",
-        
-        # Java ecosystem
-        "spring": "java", "springboot": "java", "spring boot": "java", 
-        "hibernate": "java", "maven": "java", "gradle": "java", "jpa": "java",
-        
-        # JavaScript ecosystem
-        "nodejs": "javascript", "node.js": "javascript", "node": "javascript",
-        "express": "javascript", "expressjs": "javascript", "js": "javascript",
-        "npm": "javascript", "yarn": "javascript", "webpack": "javascript", "babel": "javascript",
-        
-        # Database
-        "sql": "database", "mysql": "database", "postgresql": "database", 
-        "mongodb": "database", "db": "database",
-        
-        # Web development
-        "html": "web", "css": "web", "bootstrap": "web", "tailwind": "web",
-        "sass": "web", "scss": "web",
-        
-        # Mobile development
-        "android": "mobile", "kotlin": "mobile", "swift": "mobile", "ios": "mobile",
-        "flutter": "mobile", "dart": "mobile", "react native": "mobile",
-        
-        # DevOps/Cloud
-        "docker": "devops", "kubernetes": "devops", "aws": "devops", "azure": "devops",
-        "gcp": "devops", "ci/cd": "devops", "jenkins": "devops"
-    }
-    
-    # Return mapped subject or default to python
-    return subject_mapping.get(subject, "python")
+    # Basic fallback mapping for common cases
+    if any(keyword in subject for keyword in ["python", "flask", "django", "fastapi", "langchain", "ai", "ml", "machine learning", "openai"]):
+        return "python"
+    elif any(keyword in subject for keyword in ["react", "nextjs", "next.js", "jsx"]):
+        return "react"
+    elif any(keyword in subject for keyword in ["java", "spring"]):
+        return "java"  
+    elif any(keyword in subject for keyword in ["javascript", "js", "node", "express"]):
+        return "javascript"
+    elif any(keyword in subject for keyword in ["aws", "docker", "kubernetes", "devops"]):
+        return "devops"
+    else:
+        return "python"  # Default fallback
 
-def normalize_subject(subject: str) -> str:
-    """Main subject normalization function - tries AI first, falls back to manual"""
-    return normalize_subject_with_ai(subject)
+def extract_subject_and_timing_with_ai(message: str) -> tuple:
+    """Use AI to extract subject and timing from user message."""
+    try:
+        claude = ChatAnthropic(
+            model="claude-3-haiku-20240307", 
+            api_key=ANTHROPIC_API_KEY,
+            temperature=0
+        )
+        
+        prompt = f"""
+        Extract the subject and timing from this student message:
+        "{message}"
+        
+        For SUBJECT: Map to one of these broad categories:
+        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, AI, ML, OpenAI, etc.)
+        - react (for React, Next.js, JSX, Redux, etc.)
+        - vue (for Vue.js, Nuxt, etc.)
+        - java (for Java, Spring, etc.)  
+        - javascript (for Node.js, Express, JS, etc.)
+        - database (for SQL, MySQL, MongoDB, etc.)
+        - web (for HTML, CSS, Bootstrap, etc.)
+        - mobile (for Android, iOS, Flutter, etc.)
+        - devops (for Docker, Kubernetes, AWS, Azure, etc.)
+        
+        For TIMING: Extract time range (default to 14:00-15:00 if unclear)
+        
+        Respond in this exact format:
+        SUBJECT: [category]
+        START_TIME: [HH:MM:SS]  
+        END_TIME: [HH:MM:SS]
+        """
+        
+        response = claude.invoke(prompt)
+        ai_response = response.content if hasattr(response, 'content') else str(response)
+        
+        # Parse AI response
+        subject = "python"  # default
+        start_time = "14:00:00"  # default
+        end_time = "15:00:00"    # default
+        
+        for line in ai_response.split('\n'):
+            if line.startswith('SUBJECT:'):
+                subject = line.split(':', 1)[1].strip().lower()
+            elif line.startswith('START_TIME:'):
+                start_time = line.split(':', 1)[1].strip()
+                if len(start_time) == 5:  # HH:MM format
+                    start_time += ":00"
+            elif line.startswith('END_TIME:'):
+                end_time = line.split(':', 1)[1].strip()
+                if len(end_time) == 5:  # HH:MM format
+                    end_time += ":00"
+        
+        print(f"🤖 AI extracted - Subject: {subject}, Time: {start_time}-{end_time}")
+        return subject, start_time, end_time
+        
+    except Exception as e:
+        print(f"❌ AI extraction failed: {e}, using manual method")
+        # Fallback to manual extraction
+        return extract_subject_and_timing_manual(message)
 
-def extract_subject_and_timing(message: str) -> tuple:
-    """Extract subject and timing from user message.
-    
-    IMPORTANT: Always returns BROAD SUBJECT CATEGORIES only:
-    - python, react, vue, java, javascript, database, web, mobile, devops
-    - Never returns specific frameworks like 'flask', 'fastapi', 'nextjs', etc.
-    """
+def extract_subject_and_timing_manual(message: str) -> tuple:
+    """Manual fallback for subject and timing extraction"""
     message_lower = message.lower()
     
-    # Find the most relevant subject from the message
-    subject = "python"  # default
+    # Simple subject detection
+    if any(keyword in message_lower for keyword in ["python", "flask", "django", "langchain", "ai", "ml"]):
+        subject = "python"
+    elif any(keyword in message_lower for keyword in ["react", "nextjs", "jsx"]):
+        subject = "react"
+    elif any(keyword in message_lower for keyword in ["java", "spring"]):
+        subject = "java"
+    elif any(keyword in message_lower for keyword in ["javascript", "js", "node"]):
+        subject = "javascript"
+    elif any(keyword in message_lower for keyword in ["aws", "docker", "devops"]):
+        subject = "devops"
+    else:
+        subject = "python"  # default
     
-    # Check for subject keywords in order of specificity
-    subject_keywords = {
-        "react": ["react", "jsx", "tsx", "next.js", "nextjs", "hooks", "redux", "component"],
-        "vue": ["vue", "vuejs", "vue.js", "nuxt", "vuex"],
-        "java": ["java", "spring", "springboot", "hibernate", "maven", "gradle", "jpa"],
-        "javascript": ["javascript", "js", "node", "nodejs", "express", "npm", "yarn", "webpack", "babel"],
-        "python": ["python", "py", "flask", "django", "fastapi", "pandas", "numpy", "matplotlib", "scikit", "tensorflow", "pytorch", "jupyter"],
-        "database": ["sql", "mysql", "postgresql", "mongodb", "database", "db"],
-        "web": ["html", "css", "bootstrap", "tailwind", "sass", "scss"],
-        "mobile": ["android", "kotlin", "swift", "ios", "flutter", "dart", "react native"],
-        "devops": ["docker", "kubernetes", "aws", "azure", "gcp", "devops", "ci/cd", "jenkins"]
-    }
-    
-    # Find the first matching subject
-    for broad_subject, keywords in subject_keywords.items():
-        if any(keyword in message_lower for keyword in keywords):
-            subject = broad_subject
-            break
-    
-    # Double-check with normalize_subject to ensure consistency
-    subject = normalize_subject(subject)
-    
-    # Parse timing
+    # Parse timing manually
     start_time, end_time = parse_time_from_message(message)
     
     return subject, start_time, end_time
@@ -479,7 +451,7 @@ def extract_subject_and_timing(message: str) -> tuple:
 def get_current_date() -> str:
     """Get today's date for session scheduling."""
     today = datetime.now().strftime('%Y-%m-%d')
-    print(f"� CurGrent date: {today}")
+    print(f"📅 Current date: {today}")
     return today
 
 @tool
@@ -505,138 +477,32 @@ def get_all_sessions_data() -> str:
     except Exception as e:
         return f"Error getting sessions data: {e}"
 
-def get_teacher_sessions_with_filter(teacher_id: str, filter_type: str = "all") -> list:
-    """Get all sessions for a teacher with optional date filtering"""
-    try:
-        print(f"🔄 Getting sessions for teacher {teacher_id} with filter: {filter_type}")
-        
-        # Get all sessions for the teacher
-        query = supabase.table('sessions').select('*').eq('teacher_id', teacher_id)
-        
-        # Apply status filter - get all sessions, not just active ones
-        sessions_response = query.execute()
-        sessions = sessions_response.data
-        
-        if not sessions:
-            print(f"📭 No sessions found for teacher {teacher_id}")
-            return []
-        
-        # Get enrollment counts for all sessions
-        enrollments_response = supabase.table('session_enrollments').select('session_id').execute()
-        enrollment_counts = {}
-        
-        for enrollment in enrollments_response.data:
-            session_id = enrollment['session_id']
-            enrollment_counts[session_id] = enrollment_counts.get(session_id, 0) + 1
-        
-        # Apply date filtering and add enrollment counts
-        today = datetime.now().date()
-        filtered_sessions = []
-        
-        for session in sessions:
-            session_date = datetime.strptime(session['date'], '%Y-%m-%d').date()
-            
-            # Add actual enrollment count
-            session['total_students'] = enrollment_counts.get(session['id'], 0)
-            
-            if filter_type == "all":
-                filtered_sessions.append(session)
-            elif filter_type == "today_future":
-                if session_date >= today:
-                    filtered_sessions.append(session)
-            elif filter_type == "today":
-                if session_date == today:
-                    filtered_sessions.append(session)
-            elif filter_type == "future":
-                if session_date > today:
-                    filtered_sessions.append(session)
-        
-        # Sort by date and time
-        filtered_sessions.sort(key=lambda x: (x['date'], x['start_time']))
-        
-        print(f"✅ Found {len(filtered_sessions)} sessions for teacher {teacher_id} (filter: {filter_type})")
-        return filtered_sessions
-        
-    except Exception as e:
-        print(f"❌ Error getting teacher sessions: {e}")
-        return []
-
 @tool
 def parse_student_request(input: str) -> str:
-    """Parse student message to extract subject, timing preferences. Input: JSON with student_id, message."""
+    """Parse student message to extract subject, timing preferences using AI. Input: JSON with student_id, message."""
     try:
         data = json.loads(input)
         student_id = data["student_id"]
         message = data["message"]
         
-        # VALIDATION: Check if message contains proper timing information
-        message_lower = message.lower()
+        print(f"📝 AI parsing student request: {message}")
         
-        # Check for time patterns
-        time_patterns = [
-            r'\d{1,2}:?\d{0,2}\s*-\s*\d{1,2}:?\d{0,2}\s*(am|pm)?',
-            r'\d{1,2}\s*to\s*\d{1,2}\s*(am|pm)?',
-            r'\d{1,2}\s*(am|pm)',
-        ]
+        # Use AI for intelligent subject and timing extraction
+        subject, start_time, end_time = extract_subject_and_timing_with_ai(message)
         
-        has_timing = any(re.search(pattern, message_lower) for pattern in time_patterns)
-        
-        # Check for subject keywords - comprehensive list
-        subject_keywords = [
-            # Python ecosystem
-            "python", "py", "flask", "django", "fastapi", "pandas", "numpy", "matplotlib", "scikit", "tensorflow", "pytorch", "jupyter",
-            # JavaScript ecosystem  
-            "javascript", "js", "node", "nodejs", "express", "expressjs", "npm", "yarn", "webpack", "babel",
-            # React ecosystem
-            "react", "jsx", "tsx", "nextjs", "next.js", "hooks", "redux", "component",
-            # Vue ecosystem
-            "vue", "vuejs", "vue.js", "nuxt", "vuex",
-            # Java ecosystem
-            "java", "spring", "springboot", "spring boot", "hibernate", "maven", "gradle", "jpa", "jsp", "servlet",
-            # Database
-            "sql", "mysql", "postgresql", "mongodb", "database", "db",
-            # Web development
-            "html", "css", "bootstrap", "tailwind", "sass", "scss",
-            # Mobile
-            "android", "kotlin", "swift", "ios", "flutter", "dart", "react native",
-            # DevOps
-            "docker", "kubernetes", "aws", "azure", "gcp", "devops", "ci/cd", "jenkins"
-        ]
-        has_subject = any(keyword in message_lower for keyword in subject_keywords)
-        
-        # If missing essential information, return validation error
-        if not has_timing and not has_subject:
-            return json.dumps({
-                "validation_error": True,
-                "message": "Please provide a properly formatted message that includes both subject and timing. Example: 'I want Python session 2-3 PM' or 'React session from 1:30 to 2:30 PM'"
-            })
-        elif not has_timing:
-            return json.dumps({
-                "validation_error": True,
-                "message": "Please specify the timing for your session. Example: '2-3 PM' or '1:30 to 2:30 PM'"
-            })
-        elif not has_subject:
-            return json.dumps({
-                "validation_error": True,
-                "message": "Please specify the subject you want to learn. Available subjects: Python, React, Java, JavaScript"
-            })
-        
-        # If validation passes, proceed with parsing
-        subject, start_time, end_time = extract_subject_and_timing(message)
-        
-        # Parse date from student message - SAME LOGIC AS TEACHER
+        # Parse date from student message
         message_lower = message.lower()
         today = datetime.now()
         
-        # Flexible date parsing with typo support (same as teacher parsing)
+        # Flexible date parsing
         day_patterns = {
-            0: ["monday", "mon"],  # Monday
-            1: ["tuesday", "tue", "tuseday", "tues"],  # Tuesday (with typo support)
-            2: ["wednesday", "wed", "wednes"],  # Wednesday
-            3: ["thursday", "thu", "thurs"],  # Thursday
-            4: ["friday", "fri"],  # Friday
-            5: ["saturday", "sat"],  # Saturday
-            6: ["sunday", "sun"]  # Sunday
+            0: ["monday", "mon"],
+            1: ["tuesday", "tue", "tuseday", "tues"],
+            2: ["wednesday", "wed", "wednes"],
+            3: ["thursday", "thu", "thurs"],
+            4: ["friday", "fri"],
+            5: ["saturday", "sat"],
+            6: ["sunday", "sun"]
         }
         
         target_day = None
@@ -652,17 +518,17 @@ def parse_student_request(input: str) -> str:
                 days_ahead += 7
             target_date = today + timedelta(days=days_ahead)
             session_date = target_date.strftime('%Y-%m-%d')
-            print(f"🗓️ Student parsed day: {list(day_patterns[target_day])[0].title()} -> {session_date}")
+            print(f"🗓️ Student parsed day: {list(day_patterns[target_day])[0].title()} → {session_date}")
         elif "tomorrow" in message_lower:
             session_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
-            print(f"🗓️ Student parsed: Tomorrow -> {session_date}")
+            print(f"🗓️ Student parsed: Tomorrow → {session_date}")
         elif "today" in message_lower:
             session_date = today.strftime('%Y-%m-%d')
-            print(f"🗓️ Student parsed: Today -> {session_date}")
+            print(f"🗓️ Student parsed: Today → {session_date}")
         else:
             # Default to tomorrow if no specific date mentioned
             session_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
-            print(f"🗓️ Student default: Tomorrow -> {session_date}")
+            print(f"🗓️ Student default: Tomorrow → {session_date}")
         
         result = {
             "student_id": student_id,
@@ -673,10 +539,11 @@ def parse_student_request(input: str) -> str:
             "parsed_message": f"Student {student_id} wants {subject} session on {session_date} from {start_time[:5]} to {end_time[:5]}"
         }
         
-        print(f"📝 Parsed request: {result['parsed_message']}")
+        print(f"✅ Parsed request: {result['parsed_message']}")
         return json.dumps(result, indent=2)
         
     except Exception as e:
+        print(f"❌ Error parsing request: {e}")
         return f"Error parsing request: {e}"
 
 @tool
@@ -686,12 +553,6 @@ def check_existing_session(input: str) -> str:
         data = json.loads(input)
         subject = data["subject"].lower()
         date = data["date"]
-        
-        # VALIDATION: Ensure only broad subjects are used
-        original_subject = subject
-        subject = normalize_subject(subject)
-        if original_subject != subject:
-            print(f"🔄 Mapped '{original_subject}' to broad category: '{subject}'")
         
         print(f"🔍 Checking for {subject} session on {date}")
         
@@ -730,12 +591,6 @@ def create_new_session(input: str) -> str:
         start_time = data["start_time"]
         end_time = data["end_time"]
         
-        # VALIDATION: Ensure only broad subjects are used
-        original_subject = subject
-        subject = normalize_subject(subject)
-        if original_subject != subject:
-            print(f"🔄 Mapped '{original_subject}' to broad category: '{subject}'")
-        
         print(f"🆕 Creating new {subject} session for {date} at {start_time}-{end_time}")
         
         # 1. Store student availability
@@ -750,7 +605,7 @@ def create_new_session(input: str) -> str:
         
         # 2. Create session
         session_data = {
-            "teacher_id": "e4bcab2f-8da5-4a78-85e8-094f4d7ac308",
+            "teacher_id": TEACHER_ID,
             "subject": subject,
             "date": date,
             "start_time": start_time,
@@ -1013,63 +868,41 @@ def parse_teacher_availability(input: str) -> str:
         message_lower = message.lower()
         today = datetime.now()
         
-        # Simple date parsing
-        if "monday" in message_lower:
-            # Find next Monday
-            days_ahead = 0 - today.weekday()  # Monday is 0
+        # Flexible date parsing with typo support
+        day_patterns = {
+            0: ["monday", "mon"],
+            1: ["tuesday", "tue", "tuseday", "tues"],  # typo support
+            2: ["wednesday", "wed", "wednes"],
+            3: ["thursday", "thu", "thurs"],
+            4: ["friday", "fri"],
+            5: ["saturday", "sat"],
+            6: ["sunday", "sun"]
+        }
+        
+        target_day = None
+        for day_num, patterns in day_patterns.items():
+            if any(pattern in message_lower for pattern in patterns):
+                target_day = day_num
+                break
+        
+        if target_day is not None:
+            # Find next occurrence of the target day
+            days_ahead = target_day - today.weekday()
             if days_ahead <= 0:  # Target day already happened this week
                 days_ahead += 7
             target_date = today + timedelta(days=days_ahead)
             date = target_date.strftime('%Y-%m-%d')
-        elif "tuesday" in message_lower:
-            # Find next Tuesday
-            days_ahead = 1 - today.weekday()  # Tuesday is 1
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
-        elif "wednesday" in message_lower:
-            # Find next Wednesday
-            days_ahead = 2 - today.weekday()  # Wednesday is 2
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
-        elif "thursday" in message_lower:
-            # Find next Thursday
-            days_ahead = 3 - today.weekday()  # Thursday is 3
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
-        elif "friday" in message_lower:
-            # Find next Friday
-            days_ahead = 4 - today.weekday()  # Friday is 4
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
-        elif "saturday" in message_lower:
-            # Find next Saturday
-            days_ahead = 5 - today.weekday()  # Saturday is 5
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
-        elif "sunday" in message_lower:
-            # Find next Sunday
-            days_ahead = 6 - today.weekday()  # Sunday is 6
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = today + timedelta(days=days_ahead)
-            date = target_date.strftime('%Y-%m-%d')
+            print(f"🗓️ Teacher parsed day: {list(day_patterns[target_day])[0].title()} → {date}")
         elif "tomorrow" in message_lower:
             date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            print(f"🗓️ Teacher parsed: Tomorrow → {date}")
         elif "today" in message_lower:
             date = today.strftime('%Y-%m-%d')
+            print(f"🗓️ Teacher parsed: Today → {date}")
         else:
             # Default to tomorrow if no specific date mentioned
             date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+            print(f"🗓️ Teacher default: Tomorrow → {date}")
         
         result = {
             "teacher_id": teacher_id,
@@ -1079,7 +912,7 @@ def parse_teacher_availability(input: str) -> str:
             "parsed_message": f"Teacher {teacher_id} available on {date} from {start_time[:5]} to {end_time[:5]}"
         }
         
-        print(f"📝 Parsed teacher availability: {result['parsed_message']}")
+        print(f"✅ Parsed teacher availability: {result['parsed_message']}")
         return json.dumps(result, indent=2)
         
     except Exception as e:
@@ -1097,11 +930,10 @@ def set_teacher_availability(input: str) -> str:
         
         print(f"📅 Setting teacher availability: {teacher_id} on {date} from {start_time} to {end_time}")
         
-        # Simple teacher verification - if this is the designated teacher ID, allow it
-        TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
+        # Verify this is the authorized teacher
         if teacher_id != TEACHER_ID:
             print(f"❌ Teacher ID {teacher_id} is not authorized")
-            return "❌ Error: You must be a registered teacher to set availability"
+            return "❌ Error: You must be the registered teacher to set availability"
         
         print(f"✅ Teacher verified: {teacher_id}")
         
@@ -1113,7 +945,7 @@ def set_teacher_availability(input: str) -> str:
             "date": date,
             "start_time": start_time,
             "end_time": end_time,
-            "subject": "any",  # Default subject as requested
+            "subject": "any",  # Teachers can teach any subject
             "created_at": datetime.now().isoformat()
         }
         
@@ -1121,18 +953,18 @@ def set_teacher_availability(input: str) -> str:
             # Update existing availability
             supabase.table("teacher_availability").update(availability_data).eq("teacher_id", teacher_id).eq("date", date).execute()
             print(f"✅ Updated teacher availability for {date}")
-            return f"✅ Updated your availability for {date} from {start_time[:5]} to {end_time[:5]}"
+            return f"✅ Perfect! Your availability for {date} from {start_time[:5]} to {end_time[:5]} has been updated!"
         else:
             # Insert new availability
             supabase.table("teacher_availability").insert(availability_data).execute()
             print(f"✅ Added teacher availability for {date}")
-            return f"✅ Added your availability for {date} from {start_time[:5]} to {end_time[:5]}"
+            return f"✅ Great! Your availability for {date} from {start_time[:5]} to {end_time[:5]} has been set!"
             
     except Exception as e:
         print(f"❌ Error setting teacher availability: {e}")
         return f"❌ Error setting availability: {e}"
 
-# Tools list - Simplified AI tools
+# Tools list - AI-powered tools
 tools = [
     get_current_date,
     get_all_sessions_data,
@@ -1173,6 +1005,17 @@ else:
 
 # Test function
 if __name__ == "__main__":
-    print("🧪 Testing simplified AI session agent...")
-    result = run_session_agent("Student test123: I want a Python session 2-3 PM")
-    print(f"Result: {result}")
+    print("🧪 Testing improved AI session agent...")
+    
+    # Test student requests
+    print("\n--- Testing Student Requests ---")
+    result1 = run_session_agent("Student test123: I want to learn langchain and I'm available 2-3 PM on Friday")
+    print(f"Student Result: {result1}")
+    
+    result2 = run_session_agent("Student test456: I want AWS session from 1-3pm on Saturday")  
+    print(f"Student Result: {result2}")
+    
+    # Test teacher availability (only works with correct teacher ID)
+    print("\n--- Testing Teacher Availability ---")
+    result3 = run_session_agent("Teacher e4bcab2f-8da5-4a78-85e8-094f4d7ac308: I'm available from 12-4 PM on Saturday")
+    print(f"Teacher Result: {result3}")
