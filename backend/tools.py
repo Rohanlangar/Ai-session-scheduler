@@ -208,6 +208,10 @@ You are an intelligent AI session scheduler. Your role is determined by the user
 - Everyone else → student session booking workflow  
 - Always use AI for subject mapping - no hardcoded lists
 - Keep responses short and friendly
+
+**Session conflict Rules:**
+-look if the one session is from 12-1 and student came and say that he is available from 12-1 for other subject but on same day then simply tell him that teacher is busy
+-But look if student say 12-2 then the session with new subject must get created from 1-2pm with new subject
 """
 
 def run_session_agent(user_input: str) -> str:
