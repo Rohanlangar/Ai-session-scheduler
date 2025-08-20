@@ -184,34 +184,39 @@ You are an intelligent AI session scheduler. Your role is determined by the user
 **FOR TEACHERS (user_id = e4bcab2f-8da5-4a78-85e8-094f4d7ac308):**
 - ONLY job: Set teacher availability using parse_teacher_availability() and set_teacher_availability()
 - Teachers can teach ANY subject - don't ask for subject clarification
-- Respond with friendly confirmation after setting availability
-- Example: "✅ Your availability for Saturday 12-2 PM has been set!"
+- Respond with SHORT confirmation: "Availability set for [day] [time]"
 
 **FOR ALL OTHER USERS (Students):**
 - Handle session booking using student workflow
 - Use AI to intelligently map ANY subject/technology to broad categories
 - Follow this workflow:
   1. Call parse_student_request() to extract subject, timing, and date
-  2. Call check_existing_session() with the parsed subject and date  
-  3. If session exists: call analyze_timing_conflict() then update_existing_session()
-  4. If session doesn't exist: call create_new_session()
+  2. Call check_existing_session() with the parsed subject, date, AND timing
+  3. If time_conflict = true: Inform user about conflict and suggest different time
+  4. If session exists (same subject): call analyze_timing_conflict() then update_existing_session()
+  5. If session doesn't exist and no time conflict: call create_new_session()
+
+**TIME CONFLICT HANDLING:**
+- CRITICAL: Check for time overlaps with ANY existing sessions on the same date
+- If time conflict exists, tell user: "Teacher is busy at [time] with [subject] session. Please choose different time."
+- Do NOT create overlapping sessions under any circumstances
+
+**RESPONSE FORMAT:**
+- Keep ALL responses SHORT and direct
+- Success: "[Subject] session created/updated at [time]"
+- Conflict: "Teacher busy at [time] with [subject]. Try different time."
+- NO long explanations or details
 
 **INTELLIGENT SUBJECT MAPPING:**
 - Use AI to map ANY technology to broad categories automatically
-- Examples: "langchain" → "python", "AWS" → "devops", "Next.js" → "react"
-- Students can request ANY technology - the system will categorize it intelligently
-- Sessions are created for broad categories but cover specific technologies
+- Examples: "langchain" → "GenAI", "AWS" → "devops", "Next.js" → "react"
 
 **CRITICAL RULES:**
 - User role determines workflow - no complex intent detection needed
 - Teachers (specific user_id) → teacher availability workflow only
 - Everyone else → student session booking workflow  
-- Always use AI for subject mapping - no hardcoded lists
-- Keep responses short and friendly
-
-**Session conflict Rules:**
--look if the one session is from 12-1 and student came and say that he is available from 12-1 for other subject but on same day then simply tell him that teacher is busy
--But look if student say 12-2 then the session with new subject must get created from 1-2pm with new subject
+- Always check for time conflicts before creating sessions
+- Keep responses under 20 words maximum
 """
 
 def run_session_agent(user_input: str) -> str:
@@ -311,7 +316,7 @@ def normalize_subject_with_ai(subject: str) -> str:
         
         prompt = f"""
         Map the following technology/subject to ONE of these broad categories:
-        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, pandas, AI, Machine Learning, OpenAI, etc.)
+        - python (for Python, Django, Flask, FastAPI, Streamlit, pandas, AI, Machine Learning, OpenAI, etc.)
         - react (for React, Next.js, JSX, Redux, Gatsby, etc.)
         - vue (for Vue.js, Nuxt, Vuex, etc.)  
         - java (for Java, Spring, Hibernate, Spring Boot, etc.)
@@ -555,14 +560,17 @@ def parse_student_request(input: str) -> str:
 
 @tool
 def check_existing_session(input: str) -> str:
-    """Check if session exists for specific subject and date. Input: JSON with subject, date."""
+    """Check if session exists for specific subject and date, and also check for time conflicts with other sessions. Input: JSON with subject, date, start_time, end_time."""
     try:
         data = json.loads(input)
         subject = data["subject"].lower()
         date = data["date"]
+        start_time = data.get("start_time", "14:00:00")
+        end_time = data.get("end_time", "15:00:00")
         
-        print(f"🔍 Checking for {subject} session on {date}")
+        print(f"Checking for {subject} session on {date} at {start_time}-{end_time}")
         
+        # Check for existing session with same subject and date
         sessions = supabase.table('sessions').select('*').eq('subject', subject).eq('date', date).eq('status', 'active').execute()
         
         if sessions.data:
@@ -574,14 +582,46 @@ def check_existing_session(input: str) -> str:
                 "student_count": session["total_students"],
                 "message": f"Found {subject} session on {date} at {session['start_time'][:5]}-{session['end_time'][:5]}"
             }
-            print(f"✅ Found existing session: {result['message']}")
-        else:
-            result = {
-                "exists": False,
-                "message": f"No {subject} session found for {date}"
-            }
-            print(f"❌ No existing session found")
+            print(f"Found existing session: {result['message']}")
+            return json.dumps(result, indent=2)
         
+        # Check for time conflicts with other sessions on the same date (different subjects)
+        all_sessions = supabase.table('sessions').select('*').eq('date', date).eq('status', 'active').execute()
+        
+        if all_sessions.data:
+            # Convert time to minutes for comparison
+            def time_to_minutes(time_str):
+                hours, minutes = map(int, time_str.split(':')[:2])
+                return hours * 60 + minutes
+            
+            new_start_mins = time_to_minutes(start_time)
+            new_end_mins = time_to_minutes(end_time)
+            
+            for existing_session in all_sessions.data:
+                existing_start_mins = time_to_minutes(existing_session['start_time'])
+                existing_end_mins = time_to_minutes(existing_session['end_time'])
+                
+                # Check if there's any overlap
+                if (new_start_mins < existing_end_mins and new_end_mins > existing_start_mins):
+                    conflict_result = {
+                        "exists": False,
+                        "time_conflict": True,
+                        "conflicting_session": {
+                            "subject": existing_session['subject'],
+                            "timing": f"{existing_session['start_time'][:5]}-{existing_session['end_time'][:5]}"
+                        },
+                        "message": f"Time conflict: {existing_session['subject']} session already scheduled at {existing_session['start_time'][:5]}-{existing_session['end_time'][:5]} on {date}"
+                    }
+                    print(f"Time conflict detected with {existing_session['subject']} session")
+                    return json.dumps(conflict_result, indent=2)
+        
+        # No conflicts found
+        result = {
+            "exists": False,
+            "time_conflict": False,
+            "message": f"No {subject} session found for {date} and time slot is available"
+        }
+        print(f"No conflicts - time slot available")
         return json.dumps(result, indent=2)
         
     except Exception as e:
