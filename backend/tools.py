@@ -380,7 +380,7 @@ def extract_subject_and_timing_with_ai(message: str) -> tuple:
         "{message}"
         
         For SUBJECT: Map to one of these broad categories:
-        - python (for Python, Django, Flask, FastAPI, LangChain, Streamlit, AI, ML, OpenAI, etc.)
+        - python (for Python, Django, Flask, FastAPI, Streamlit, etc.)
         - react (for React, Next.js, JSX, Redux, etc.)
         - vue (for Vue.js, Nuxt, etc.)
         - java (for Java, Spring, etc.)  
@@ -389,6 +389,9 @@ def extract_subject_and_timing_with_ai(message: str) -> tuple:
         - web (for HTML, CSS, Bootstrap, etc.)
         - mobile (for Android, iOS, Flutter, etc.)
         - devops (for Docker, Kubernetes, AWS, Azure, etc.)
+        - GenAi (for Langchain,langgraph,n8n,langflow etc.)
+        - AI (for Ai, Ollama, models)
+        -ML
         
         For TIMING: Extract time range (default to 14:00-15:00 if unclear)
         
@@ -431,7 +434,7 @@ def extract_subject_and_timing_manual(message: str) -> tuple:
     message_lower = message.lower()
     
     # Simple subject detection
-    if any(keyword in message_lower for keyword in ["python", "flask", "django", "langchain", "ai", "ml"]):
+    if any(keyword in message_lower for keyword in ["python", "flask", "django", "ai", "ml"]):
         subject = "python"
     elif any(keyword in message_lower for keyword in ["react", "nextjs", "jsx"]):
         subject = "react"
