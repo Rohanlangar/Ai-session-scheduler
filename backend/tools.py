@@ -192,7 +192,7 @@ You are an intelligent AI session scheduler. Your role is determined by the user
 - Follow this workflow:
   1. Call parse_student_request() to extract subject, timing, and date
   2. Call check_existing_session() with the parsed subject, date, AND timing
-  3. If time_conflict = true: Inform user about conflict and suggest different time
+  3. If time_conflict = true: STOP - Tell user "Teacher busy at [time] with [subject]. Choose different time." DO NOT CREATE SESSION
   4. If session exists (same subject): call analyze_timing_conflict() then update_existing_session()
   5. If session doesn't exist and no time conflict: call create_new_session()
 
@@ -252,19 +252,18 @@ Process any message from teacher as availability setting.
             contextual_input = f"""
 STUDENT {user_id} says: {clean_message}
 
-This is a STUDENT requesting session booking. Follow student workflow:
+This is a STUDENT requesting session booking. Follow student workflow EXACTLY:
 1. Call parse_student_request() to get subject, timing, and date from message
-2. Use AI to intelligently map the subject to broad categories (python, react, java, etc.)
-3. Call check_existing_session() with the parsed subject and date
-4. Create new session OR update existing session based on availability
+2. Use AI to intelligently map the subject to broad categories 
+3. Call check_existing_session() with the parsed subject, date, start_time, and end_time
+4. **CRITICAL**: If check_existing_session returns time_conflict=true, STOP IMMEDIATELY
+   - Respond: "Teacher busy at [time] with [subject] session. Choose different time."
+   - DO NOT call create_new_session() or any other tools
+5. If same subject exists: update_existing_session()
+6. If no session and no conflict: create_new_session()
 
-IMPORTANT: 
-- Use AI for ALL subject mapping - accept ANY technology/subject
-- Examples: "langchain" → "python", "AWS" → "devops", "AI" → "python"
-- Let AI handle the intelligent categorization
-- Don't validate subjects manually
-
-Keep response short and friendly!
+NEVER CREATE OVERLAPPING SESSIONS. Time conflicts = STOP and inform user.
+Keep response under 15 words.
 """
         
         if llm is None:
@@ -626,6 +625,7 @@ def check_existing_session(input: str) -> str:
         
     except Exception as e:
         return f"Error checking existing session: {e}"
+
 
 @tool
 def create_new_session(input: str) -> str:
