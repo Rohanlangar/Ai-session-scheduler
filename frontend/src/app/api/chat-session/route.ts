@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
         message,
         user_id,
         is_teacher
-      })
+      }),
+      // Add timeout and keep-alive for better performance
+      signal: AbortSignal.timeout(30000), // 30 second timeout
     })
 
     if (!backendResponse.ok) {

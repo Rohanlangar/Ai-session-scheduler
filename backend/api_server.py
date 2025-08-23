@@ -4,26 +4,8 @@ from pydantic import BaseModel
 import uvicorn
 import asyncio
 from datetime import datetime
-import hashlib
-import json
 
 app = FastAPI(title="AI Session Scheduler API")
-
-# Simple in-memory cache for responses
-response_cache = {}
-CACHE_TTL = 300  # 5 minutes
-
-def get_cache_key(user_id: str, message: str) -> str:
-    """Generate cache key for user message"""
-    return hashlib.md5(f"{user_id}:{message.lower()}".encode()).hexdigest()
-
-def is_cacheable_request(message: str) -> bool:
-    """Check if request can be cached (simple patterns)"""
-    simple_patterns = [
-        "hello", "hi", "help", "what can you do", "available times",
-        "schedule", "book session", "cancel", "reschedule"
-    ]
-    return any(pattern in message.lower() for pattern in simple_patterns)
 
 # Keep-alive mechanism to prevent Render container sleep
 @app.on_event("startup")
@@ -78,14 +60,6 @@ class TeacherSessionsRequest(BaseModel):
 async def chat_session(request: ChatRequest):
     """Handle chat messages and create sessions"""
     try:
-        # Check cache for simple requests
-        cache_key = get_cache_key(request.user_id, request.message)
-        if is_cacheable_request(request.message) and cache_key in response_cache:
-            cached_response = response_cache[cache_key]
-            if datetime.now().timestamp() - cached_response["timestamp"] < CACHE_TTL:
-                print(f"🚀 Cache hit for: {request.message[:30]}...")
-                return cached_response["response"]
-        
         # Lazy import to reduce startup time
         from tools import run_session_agent
         
@@ -98,21 +72,12 @@ async def chat_session(request: ChatRequest):
         # Get AI response
         response = run_session_agent(user_message)
         
-        result = {
+        return {
             "success": True,
             "response": response,
             "user_id": request.user_id,
             "is_teacher": request.is_teacher
         }
-        
-        # Cache simple responses
-        if is_cacheable_request(request.message):
-            response_cache[cache_key] = {
-                "response": result,
-                "timestamp": datetime.now().timestamp()
-            }
-        
-        return result
         
     except Exception as e:
         print(f"❌ API Error: {e}")

@@ -167,9 +167,8 @@ class AgentState(TypedDict):
 # Claude (Anthropic) LLM
 try:
     llm = ChatAnthropic(
-        model="claude-3-haiku-20240307",  # Fastest Claude model
-        temperature=0,  # Faster with no randomness
-        max_tokens=150,  # Limit response length for speed
+        model="claude-3-haiku-20240307",
+        temperature=0.1,
         api_key=ANTHROPIC_API_KEY
     )
     print("✅ Anthropic LLM initialized successfully")
