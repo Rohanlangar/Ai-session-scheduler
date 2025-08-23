@@ -167,8 +167,9 @@ class AgentState(TypedDict):
 # Claude (Anthropic) LLM
 try:
     llm = ChatAnthropic(
-        model="claude-3-haiku-20240307",
-        temperature=0.1,
+        model="claude-3-haiku-20240307",  # Fastest Claude model
+        temperature=0,  # Faster with no randomness
+        max_tokens=150,  # Limit response length for speed
         api_key=ANTHROPIC_API_KEY
     )
     print("✅ Anthropic LLM initialized successfully")
@@ -226,6 +227,17 @@ def run_session_agent(user_input: str) -> str:
         user_id, is_teacher_from_message, clean_message = extract_user_id_from_message(user_input)
         
         print(f"🔍 Processing - User ID: {user_id}, Message: {clean_message}")
+        
+        # Try fast response first (no AI needed)
+        try:
+            from fast_responses import get_fast_response, is_simple_request
+            if is_simple_request(clean_message):
+                fast_response = get_fast_response(clean_message, user_id, is_teacher_from_message)
+                if fast_response:
+                    print(f"🚀 Fast response used")
+                    return fast_response
+        except ImportError:
+            pass  # Fast responses not available
         
         # SIMPLIFIED ROLE DETECTION - Only check user ID
         is_designated_teacher = (user_id == TEACHER_ID)
