@@ -6,8 +6,8 @@ import asyncio
 from datetime import datetime
 import os
 try:
-    import dotenv
-    dotenv.load()
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
     # Fallback if python-dotenv is not available
     pass

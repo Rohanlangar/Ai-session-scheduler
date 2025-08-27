@@ -25,7 +25,7 @@ function AuthCallbackContent() {
   const autoAssignRole = async (user: any) => {
     try {
       setStatus('Setting up your account...')
-      
+
       // Check if user already has a role
       const { data: teacherData } = await supabase
         .from('teachers')
@@ -48,16 +48,16 @@ function AuthCallbackContent() {
       const userData = {
         id: user.id,
         user_id: user.id,
-        name: user.user_metadata?.name || 
-              user.user_metadata?.full_name || 
-              user.email?.split('@')[0] || 
-              'User',
+        name: user.user_metadata?.name ||
+          user.user_metadata?.full_name ||
+          user.email?.split('@')[0] ||
+          'User',
         email: user.email || ''
       }
-      
+
       // Check if this is the specific teacher ID
       const TEACHER_ID = 'e4bcab2f-8da5-4a78-85e8-094f4d7ac308'
-      
+
       if (user.id === TEACHER_ID) {
         // Create teacher account
         await supabase.from('teachers').insert({
@@ -75,7 +75,7 @@ function AuthCallbackContent() {
         })
         console.log('✅ Student account created for:', user.email)
       }
-      
+
     } catch (error: any) {
       console.error('Error auto-assigning role:', error)
       // Don't throw error, just log it
@@ -86,11 +86,11 @@ function AuthCallbackContent() {
     const handleAuthCallback = async () => {
       try {
         setStatus('Authenticating...')
-        
+
         // Check for error in URL params
         const error = searchParams.get('error')
         const errorDescription = searchParams.get('error_description')
-        
+
         if (error) {
           console.error('OAuth error:', error, errorDescription)
           setStatus('Authentication failed')
@@ -100,10 +100,10 @@ function AuthCallbackContent() {
 
         // Wait a moment for Supabase to process the OAuth callback
         await new Promise(resolve => setTimeout(resolve, 1000))
-        
+
         // Get the current session
         const { data, error: sessionError } = await supabase.auth.getSession()
-        
+
         if (sessionError) {
           console.error('Session error:', sessionError)
           setStatus('Session error')
@@ -114,10 +114,10 @@ function AuthCallbackContent() {
         if (data.session?.user) {
           console.log('✅ User authenticated:', data.session.user.email)
           setStatus('Welcome! Setting up your account...')
-          
+
           // Auto-assign role based on user ID
           await autoAssignRole(data.session.user)
-          
+
           setStatus('Redirecting to dashboard...')
           setTimeout(() => router.push('/dashboard'), 1000)
         } else {
