@@ -11,8 +11,8 @@ import os
 
 # Load environment variables
 try:
-    import dotenv
-    dotenv.load()
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
     # Fallback if python-dotenv is not available
     pass
