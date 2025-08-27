@@ -9,6 +9,13 @@ from langgraph.prebuilt import create_react_agent
 from typing import TypedDict, List, Optional
 import os   
 
+# Load environment variables
+try:
+    import dotenv
+    dotenv.load()
+except ImportError:
+    # Fallback if python-dotenv is not available
+    pass
 
 # Get credentials from environment variables - NO fallbacks for security
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -49,34 +56,87 @@ def extract_user_id_from_message(message: str) -> tuple:
 
 def parse_time_from_message(message: str) -> tuple:
     """Extract time information from user message"""
-    # Look for time patterns like "12-1pm", "2-3 PM", "1:30-2:30", "2 to 3 PM"
+    message_lower = message.lower()
+    
+    # Enhanced time patterns with better range support
     time_patterns = [
-        r'(\d{1,2}):?(\d{0,2})\s*-\s*(\d{1,2}):?(\d{0,2})\s*(am|pm)',
-        r'(\d{1,2})\s*to\s*(\d{1,2})\s*(am|pm)',
+        # Pattern 1: "9am to 5pm", "10am-3pm", "2-4pm"
+        r'(\d{1,2})\s*(am|pm)\s*(?:to|-)\s*(\d{1,2})\s*(am|pm)',
+        # Pattern 2: "9-5pm" (both times same am/pm)
+        r'(\d{1,2})\s*-\s*(\d{1,2})\s*(am|pm)',
+        # Pattern 3: "2:30-4:30pm"
+        r'(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*(am|pm)',
+        # Pattern 4: Single time "2pm"
         r'(\d{1,2})\s*(am|pm)',
     ]
     
-    for pattern in time_patterns:
-        match = re.search(pattern, message.lower())
+    for i, pattern in enumerate(time_patterns):
+        match = re.search(pattern, message_lower)
         if match:
             groups = match.groups()
-            if len(groups) >= 3:  # We have start, end, and am/pm
+            print(f"🕐 Pattern {i+1} matched: {groups}")
+            
+            if i == 0:  # "9am to 5pm" or "10am-3pm"
                 start_hour = int(groups[0])
-                end_hour = int(groups[2]) if groups[2] else start_hour + 1
-                am_pm = groups[-1]  # Last group is am/pm
+                start_ampm = groups[1]
+                end_hour = int(groups[2])
+                end_ampm = groups[3]
                 
-                # Handle PM conversion
-                if am_pm == 'pm' and start_hour < 12:
+                # Convert start time
+                if start_ampm == 'pm' and start_hour < 12:
                     start_hour += 12
-                    if end_hour <= start_hour - 12:  # end_hour is also PM
-                        end_hour += 12
-                elif am_pm == 'am' and start_hour == 12:
+                elif start_ampm == 'am' and start_hour == 12:
                     start_hour = 0
+                
+                # Convert end time
+                if end_ampm == 'pm' and end_hour < 12:
+                    end_hour += 12
+                elif end_ampm == 'am' and end_hour == 12:
+                    end_hour = 0
+                
+                return f"{start_hour:02d}:00:00", f"{end_hour:02d}:00:00"
+                
+            elif i == 1:  # "9-5pm" (both same am/pm)
+                start_hour = int(groups[0])
+                end_hour = int(groups[1])
+                am_pm = groups[2]
+                
+                # Convert both times
+                if am_pm == 'pm':
+                    if start_hour < 12:
+                        start_hour += 12
+                    if end_hour < 12:
+                        end_hour += 12
+                elif am_pm == 'am':
+                    if start_hour == 12:
+                        start_hour = 0
                     if end_hour == 12:
                         end_hour = 0
                 
                 return f"{start_hour:02d}:00:00", f"{end_hour:02d}:00:00"
-            elif len(groups) >= 2:  # We have start and am/pm
+                
+            elif i == 2:  # "2:30-4:30pm"
+                start_hour = int(groups[0])
+                start_min = int(groups[1])
+                end_hour = int(groups[2])
+                end_min = int(groups[3])
+                am_pm = groups[4]
+                
+                # Convert times
+                if am_pm == 'pm':
+                    if start_hour < 12:
+                        start_hour += 12
+                    if end_hour < 12:
+                        end_hour += 12
+                elif am_pm == 'am':
+                    if start_hour == 12:
+                        start_hour = 0
+                    if end_hour == 12:
+                        end_hour = 0
+                
+                return f"{start_hour:02d}:{start_min:02d}:00", f"{end_hour:02d}:{end_min:02d}:00"
+                
+            elif i == 3:  # Single time "2pm"
                 start_hour = int(groups[0])
                 am_pm = groups[1]
                 
@@ -88,6 +148,7 @@ def parse_time_from_message(message: str) -> tuple:
                 end_hour = start_hour + 1
                 return f"{start_hour:02d}:00:00", f"{end_hour:02d}:00:00"
     
+    print("🕐 No time pattern matched, using default")
     # Default fallback
     return "14:00:00", "15:00:00"
 
@@ -121,38 +182,24 @@ def calculate_optimal_timing(student_timings: list, teacher_availability: tuple 
         # Strategy 2: No overlap - find the most common time range
         print("❌ No overlap found - finding best compromise")
         
-        # Group similar time ranges (within 2 hours of each other)
-        groups = []
+        # Strategy: Find exact majority preference (most common time slot)
+        # Count frequency of each unique time slot
+        time_counts = {}
         for start_mins, end_mins in time_ranges:
-            placed = False
-            for group in groups:
-                # Check if this timing is similar to existing group (within 2 hours)
-                group_avg_start = sum(r[0] for r in group) // len(group)
-                if abs(start_mins - group_avg_start) <= 120:  # Within 2 hours
-                    group.append((start_mins, end_mins))
-                    placed = True
-                    break
-            
-            if not placed:
-                groups.append([(start_mins, end_mins)])
+            time_key = (start_mins, end_mins)
+            time_counts[time_key] = time_counts.get(time_key, 0) + 1
         
-        # Find the largest group (most students with similar timing)
-        largest_group = max(groups, key=len)
-        print(f"  Largest group has {len(largest_group)} students")
+        # Find the most popular time slot
+        most_popular_time = max(time_counts.items(), key=lambda x: x[1])
+        popular_start_mins, popular_end_mins = most_popular_time[0]
+        student_count = most_popular_time[1]
         
-        # Use average of the largest group
-        group_starts = [r[0] for r in largest_group]
-        group_ends = [r[1] for r in largest_group]
+        print(f"  Most popular time slot: {popular_start_mins//60:02d}:{popular_start_mins%60:02d} - {popular_end_mins//60:02d}:{popular_end_mins%60:02d}")
+        print(f"  Preferred by {student_count} out of {len(time_ranges)} students")
         
-        avg_start = sum(group_starts) // len(group_starts)
-        avg_end = sum(group_ends) // len(group_ends)
-        
-        # Ensure minimum 1 hour duration
-        if avg_end - avg_start < 60:
-            avg_end = avg_start + 60
-        
-        optimal_start = f"{avg_start//60:02d}:{avg_start%60:02d}:00"
-        optimal_end = f"{avg_end//60:02d}:{avg_end%60:02d}:00"
+        # Use the most popular time slot directly
+        optimal_start = f"{popular_start_mins//60:02d}:{popular_start_mins%60:02d}:00"
+        optimal_end = f"{popular_end_mins//60:02d}:{popular_end_mins%60:02d}:00"
         
         print(f"  Using largest group average: {optimal_start} - {optimal_end}")
     
@@ -184,129 +231,202 @@ You are an intelligent AI session scheduler. Your role is determined by the user
 **FOR TEACHERS (user_id = e4bcab2f-8da5-4a78-85e8-094f4d7ac308):**
 - ONLY job: Set teacher availability using parse_teacher_availability() and set_teacher_availability()
 - Teachers can teach ANY subject - don't ask for subject clarification
-- Respond with SHORT confirmation: "Availability set for [day] [time]"
+- Return the exact result from set_teacher_availability() tool
 
 **FOR ALL OTHER USERS (Students):**
-- Handle session booking using student workflow
-- Use AI to intelligently map ANY subject/technology to broad categories
-- Follow this workflow:
-  1. Call parse_student_request() to extract subject, timing, and date
-  2. Call check_existing_session() with the parsed subject, date, AND timing
-  3. If time_conflict = true: STOP - Tell user "Teacher busy at [time] with [subject]. Choose different time." DO NOT CREATE SESSION
-  4. If session exists (same subject): call analyze_timing_conflict() then update_existing_session()
-  5. If session doesn't exist and no time conflict: call create_new_session()
-
-**TIME CONFLICT HANDLING:**
-- CRITICAL: Check for time overlaps with ANY existing sessions on the same date
-- If time conflict exists, tell user: "Teacher is busy at [time] with [subject] session. Please choose different time."
-- Do NOT create overlapping sessions under any circumstances
+- IMMEDIATELY use tools, do NOT explain what you're doing
+- Follow this workflow EXACTLY:
+  1. Call parse_student_request() with student_id and message
+  2. Call create_new_session() with the parsed data (this handles everything automatically)
+  3. Return the EXACT result from create_new_session() tool
 
 **RESPONSE FORMAT:**
-- Keep ALL responses SHORT and direct
-- Success: "[Subject] session created/updated at [time]"
-- Conflict: "Teacher busy at [time] with [subject]. Try different time."
-- NO long explanations or details
-
-**INTELLIGENT SUBJECT MAPPING:**
-- Use AI to map ANY technology to broad categories automatically
-- Examples: "langchain" → "GenAI", "AWS" → "devops", "Next.js" → "react"
+- Use tools immediately, no explanations
+- Return the EXACT tool result as your final response
+- Do NOT add any additional text or explanations
+- Example: If tool returns "Python session created at 12:00-13:00", return exactly that
 
 **CRITICAL RULES:**
-- User role determines workflow - no complex intent detection needed
-- Teachers (specific user_id) → teacher availability workflow only
-- Everyone else → student session booking workflow  
-- Always check for time conflicts before creating sessions
-- Keep responses under 20 words maximum
+- ALWAYS return the exact tool result as your final response
+- Do NOT modify or add to the tool result
+- Do NOT explain what you're doing
+- Just call the tool and return its result
 """
 
+def validate_input(message: str) -> tuple:
+    """Validate user input and return (is_valid, error_message)"""
+    if not message or len(message.strip()) < 3:
+        return False, "Please tell me what you want to learn."
+    
+    # Check for basic session keywords
+    session_keywords = ['session', 'class', 'lesson', 'learn', 'teach', 'available', 'want', 'need']
+    if not any(keyword in message.lower() for keyword in session_keywords):
+        return False, "What subject do you want to learn?"
+    
+    return True, ""
+
+def safe_ai_invoke(messages: list, fallback_message: str = "I'll help you with your session request.") -> str:
+    """Safely invoke AI agent with tools for actual session creation"""
+    try:
+        if llm is None or graph is None:
+            print("⚠️ LLM or graph is None, using fallback")
+            return fallback_message
+        
+        print(f"🤖 Using LangGraph agent with tools")
+        
+        # Convert messages to LangChain format
+        from langchain_core.messages import SystemMessage, HumanMessage
+        
+        langchain_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                langchain_messages.append(SystemMessage(content=msg.get("content", "")))
+            elif msg.get("role") == "user":
+                langchain_messages.append(HumanMessage(content=msg.get("content", "")))
+        
+        # Invoke the agent with tools
+        try:
+            result = graph.invoke({"messages": langchain_messages})
+            
+            # Extract the final response - handle different result formats
+            if result:
+                print(f"🔍 Agent result type: {type(result)}")
+                print(f"🔍 Agent result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+                
+                if isinstance(result, dict) and "messages" in result:
+                    final_message = result["messages"][-1]
+                    if hasattr(final_message, 'content'):
+                        response_content = final_message.content
+                        print(f"✅ Agent response: {response_content[:100]}...")
+                        return response_content
+                    else:
+                        print(f"⚠️ Final message has no content: {final_message}")
+                        return fallback_message
+                elif isinstance(result, list) and len(result) > 0:
+                    # Sometimes the result is directly a list of messages
+                    final_message = result[-1]
+                    if hasattr(final_message, 'content'):
+                        response_content = final_message.content
+                        print(f"✅ Agent response (list): {response_content[:100]}...")
+                        return response_content
+                    else:
+                        print(f"⚠️ Final message in list has no content: {final_message}")
+                        return fallback_message
+                else:
+                    print(f"⚠️ Unexpected result format: {result}")
+                    return fallback_message
+            else:
+                print(f"⚠️ Agent result is None or empty")
+                return fallback_message
+                
+        except Exception as agent_error:
+            print(f"❌ Agent invocation failed: {agent_error}")
+            # Fallback to direct LLM call without tools
+            print(f"🔄 Falling back to direct LLM call")
+            
+            system_msg = ""
+            user_msg = ""
+            
+            for msg in messages:
+                if msg.get("role") == "system":
+                    system_msg = msg.get("content", "")
+                elif msg.get("role") == "user":
+                    user_msg = msg.get("content", "")
+            
+            full_prompt = f"{system_msg}\n\nUser Request: {user_msg}"
+            response = llm.invoke(full_prompt)
+            
+            if hasattr(response, 'content') and response.content:
+                print(f"✅ Fallback LLM response: {response.content[:100]}...")
+                return response.content
+            else:
+                return fallback_message
+        
+    except Exception as e:
+        print(f"❌ Safe AI invoke failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return fallback_message
+
 def run_session_agent(user_input: str) -> str:
-    """Run the session creation agent with user input."""
+    """Run the session creation agent with user input - DIRECT APPROACH to avoid rate limits."""
     try:
         # Extract user information from the message
         user_id, is_teacher_from_message, clean_message = extract_user_id_from_message(user_input)
         
         print(f"🔍 Processing - User ID: {user_id}, Message: {clean_message}")
         
-        # Try fast response first (no AI needed)
-        try:
-            from fast_responses import get_fast_response, is_simple_request
-            if is_simple_request(clean_message):
-                fast_response = get_fast_response(clean_message, user_id, is_teacher_from_message)
-                if fast_response:
-                    print(f"🚀 Fast response used")
-                    return fast_response
-        except ImportError:
-            pass  # Fast responses not available
-        
         # SIMPLIFIED ROLE DETECTION - Only check user ID
         is_designated_teacher = (user_id == TEACHER_ID)
         
         if is_designated_teacher:
-            # This is the designated teacher - handle availability setting
+            # TEACHER WORKFLOW - Direct tool calls
             print(f"👨‍🏫 TEACHER detected: {user_id}")
-            contextual_input = f"""
-TEACHER {user_id} says: {clean_message}
-
-This user is the designated TEACHER. Their ONLY job is setting availability.
-Follow teacher workflow:
-1. Call parse_teacher_availability() to extract date and timing from message
-2. Call set_teacher_availability() with the parsed data  
-3. Do NOT call any student session tools
-4. Teachers can teach ANY subject - don't ask for subject clarification
-5. Provide friendly confirmation response
-
-Process any message from teacher as availability setting.
-"""
+            try:
+                # Parse teacher availability
+                teacher_input = json.dumps({
+                    "teacher_id": user_id,
+                    "message": clean_message
+                })
+                parsed_result = parse_teacher_availability.invoke(teacher_input)
+                parsed_data = json.loads(parsed_result)
+                
+                if 'error' in parsed_data:
+                    return parsed_data['error']
+                
+                # Set teacher availability
+                availability_input = json.dumps({
+                    "teacher_id": user_id,
+                    "date": parsed_data["date"],
+                    "start_time": parsed_data["start_time"],
+                    "end_time": parsed_data["end_time"]
+                })
+                result = set_teacher_availability.invoke(availability_input)
+                return result
+                
+            except Exception as e:
+                print(f"❌ Teacher workflow error: {e}")
+                return "✅ I'll help you set your availability. Please specify the day and time."
+        
         else:
-            # This is a student - handle session booking
+            # STUDENT WORKFLOW - Direct tool calls
             print(f"👨‍🎓 STUDENT detected: {user_id}")
-            contextual_input = f"""
-STUDENT {user_id} says: {clean_message}
-
-This is a STUDENT requesting session booking. Follow student workflow EXACTLY:
-1. Call parse_student_request() to get subject, timing, and date from message
-2. Use AI to intelligently map the subject to broad categories 
-3. Call check_existing_session() with the parsed subject, date, start_time, and end_time
-4. **CRITICAL**: If check_existing_session returns time_conflict=true, STOP IMMEDIATELY
-   - Respond: "Teacher busy at [time] with [subject] session. Choose different time."
-   - DO NOT call create_new_session() or any other tools
-5. If same subject exists: update_existing_session()
-6. If no session and no conflict: create_new_session()
-
-NEVER CREATE OVERLAPPING SESSIONS. Time conflicts = STOP and inform user.
-Keep response under 15 words.
-"""
-        
-        if llm is None:
-            # Mock response for testing when API key is invalid
-            if is_designated_teacher:
-                return "✅ I understand you want to set your availability! Please get a valid Anthropic API key to use the full AI features."
-            else:
-                return "✅ I understand you want to book a session! Please get a valid Anthropic API key to use the full AI features."
-        
-        # Include system prompt in messages
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": contextual_input}
-        ]
-        
-        response = graph.invoke({
-            "messages": messages
-        })
-        
-        # Simple response extraction
-        if "messages" in response and response["messages"]:
-            final_message = response["messages"][-1]
-            if hasattr(final_message, 'content'):
-                return final_message.content
-            elif isinstance(final_message, dict) and 'content' in final_message:
-                return final_message['content']
-        
-        return "✅ Request processed successfully!"
+            
+            # Validate input for students only
+            is_valid, error_msg = validate_input(clean_message)
+            if not is_valid:
+                return error_msg
+            
+            try:
+                # Parse student request
+                student_input = json.dumps({
+                    "student_id": user_id,
+                    "message": clean_message
+                })
+                parsed_result = parse_student_request.invoke(student_input)
+                parsed_data = json.loads(parsed_result)
+                
+                if 'error' in parsed_data:
+                    return parsed_data['error']
+                
+                # Create/update session directly
+                session_input = json.dumps({
+                    "student_id": parsed_data["student_id"],
+                    "subject": parsed_data["subject"],
+                    "date": parsed_data["session_date"],
+                    "start_time": parsed_data["preferred_start_time"],
+                    "end_time": parsed_data["preferred_end_time"]
+                })
+                result = create_new_session.invoke(session_input)
+                return result
+                
+            except Exception as e:
+                print(f"❌ Student workflow error: {e}")
+                return "✅ I'll help you book a session. Please specify the subject, day, and time."
         
     except Exception as e:
         print(f"❌ ERROR in run_session_agent: {e}")
-        return f"I understand your request. Let me help you with that!"
+        return "I'm having trouble processing your request. Please try again with a clear session request (e.g., 'I want Python session 2-3pm Monday')."
 
 # === HELPER FUNCTIONS ===
 
@@ -382,90 +502,283 @@ def normalize_subject_manual(subject: str) -> str:
         return "python"  # Default fallback
 
 def extract_subject_and_timing_with_ai(message: str) -> tuple:
-    """Use AI to extract subject and timing from user message."""
-    try:
-        claude = ChatAnthropic(
-            model="claude-3-haiku-20240307", 
-            api_key=ANTHROPIC_API_KEY,
-            temperature=0
-        )
-        
-        prompt = f"""
-        Extract the subject and timing from this student message:
-        "{message}"
-        
-        For SUBJECT: Map to one of these broad categories:
-        - python (for Python, Django, Flask, FastAPI, Streamlit, etc.)
-        - react (for React, Next.js, JSX, Redux, etc.)
-        - vue (for Vue.js, Nuxt, etc.)
-        - java (for Java, Spring, etc.)  
-        - javascript (for Node.js, Express, JS, etc.)
-        - database (for SQL, MySQL, MongoDB, etc.)
-        - web (for HTML, CSS, Bootstrap, etc.)
-        - mobile (for Android, iOS, Flutter, etc.)
-        - devops (for Docker, Kubernetes, AWS, Azure, etc.)
-        - GenAi (for Langchain,langgraph,n8n,langflow etc.)
-        - AI (for Ai, Ollama, models)
-        -ML
-        
-        For TIMING: Extract time range (default to 14:00-15:00 if unclear)
-        
-        Respond in this exact format:
-        SUBJECT: [category]
-        START_TIME: [HH:MM:SS]  
-        END_TIME: [HH:MM:SS]
-        """
-        
-        response = claude.invoke(prompt)
-        ai_response = response.content if hasattr(response, 'content') else str(response)
-        
-        # Parse AI response
-        subject = "python"  # default
-        start_time = "14:00:00"  # default
-        end_time = "15:00:00"    # default
-        
-        for line in ai_response.split('\n'):
-            if line.startswith('SUBJECT:'):
-                subject = line.split(':', 1)[1].strip().lower()
-            elif line.startswith('START_TIME:'):
-                start_time = line.split(':', 1)[1].strip()
-                if len(start_time) == 5:  # HH:MM format
-                    start_time += ":00"
-            elif line.startswith('END_TIME:'):
-                end_time = line.split(':', 1)[1].strip()
-                if len(end_time) == 5:  # HH:MM format
-                    end_time += ":00"
-        
-        print(f"🤖 AI extracted - Subject: {subject}, Time: {start_time}-{end_time}")
-        return subject, start_time, end_time
-        
-    except Exception as e:
-        print(f"❌ AI extraction failed: {e}, using manual method")
-        # Fallback to manual extraction
-        return extract_subject_and_timing_manual(message)
+    """Use AI to extract subject and timing from user message with retry logic and caching."""
+    import time
+    import hashlib
+    
+    # Simple in-memory cache to reduce API calls
+    if not hasattr(extract_subject_and_timing_with_ai, 'cache'):
+        extract_subject_and_timing_with_ai.cache = {}
+    
+    # Create cache key
+    cache_key = hashlib.md5(message.lower().encode()).hexdigest()
+    if cache_key in extract_subject_and_timing_with_ai.cache:
+        cached_result = extract_subject_and_timing_with_ai.cache[cache_key]
+        print(f"🔄 Using cached result for similar message")
+        return cached_result
+    
+    max_retries = 1  # Single retry to fail very fast
+    base_delay = 0.2  # Very short delay
+    
+    for attempt in range(max_retries):
+        try:
+            claude = ChatAnthropic(
+                model="claude-3-haiku-20240307", 
+                api_key=ANTHROPIC_API_KEY,
+                temperature=0
+            )
+            
+            prompt = f"""
+            You are an intelligent session scheduler. Extract the subject and timing from this student message:
+            "{message}"
+            
+            SUBJECT MAPPING - Be flexible and intelligent:
+            - python: Python, Django, Flask, FastAPI, Streamlit, pandas, numpy, AI, ML, machine learning, data science, LangChain, OpenAI, ChatGPT, artificial intelligence, deep learning, neural networks, TensorFlow, PyTorch, scikit-learn
+            - react: React, ReactJS, Next.js, JSX, Redux, Gatsby, React Native (web focus)
+            - vue: Vue, Vue.js, Vuejs, Nuxt, Vuex, Vue 3
+            - java: Java, Spring, Spring Boot, Hibernate, Maven, Gradle, JPA, JSP, Servlets
+            - javascript: JavaScript, JS, Node.js, Express, TypeScript, TS, vanilla JS, ES6, npm, yarn
+            - database: SQL, MySQL, PostgreSQL, MongoDB, database, DB, SQLite, Redis, NoSQL, queries, data modeling
+            - web: HTML, CSS, Bootstrap, Tailwind, SASS, SCSS, web development, frontend, responsive design, CSS Grid, Flexbox
+            - mobile: Android, iOS, Flutter, React Native (mobile focus), Swift, Kotlin, mobile development, app development
+            - devops: Docker, Kubernetes, AWS, Azure, GCP, Jenkins, CI/CD, DevOps, deployment, cloud, infrastructure, containers
+            
+            INTELLIGENT SUBJECT DETECTION:
+            - If message mentions specific technologies, map to appropriate category
+            - If message is vague like "coding", "programming", "development" without specifics, return "UNCLEAR"
+            - If message mentions multiple subjects, pick the most prominent one
+            - Be flexible with variations and typos (e.g., "Reactjs" → react, "Pyhton" → python)
+            
+            TIMING EXTRACTION:
+            - Look for patterns like "2-3pm", "14:00-15:00", "2 to 3", "from 2 to 3"
+            - Default to 14:00-15:00 if no clear time mentioned
+            - Convert 12-hour to 24-hour format
+            
+            Respond in this EXACT format:
+            SUBJECT: [category or UNCLEAR]
+            START_TIME: [HH:MM:SS]  
+            END_TIME: [HH:MM:SS]
+            
+            Examples:
+            "I want React session 2-3pm" → SUBJECT: react, START_TIME: 14:00:00, END_TIME: 15:00:00
+            "Need help with coding" → SUBJECT: UNCLEAR, START_TIME: 14:00:00, END_TIME: 15:00:00
+            "Docker training tomorrow" → SUBJECT: devops, START_TIME: 14:00:00, END_TIME: 15:00:00
+            """
+            
+            response = claude.invoke(prompt)
+            ai_response = response.content if hasattr(response, 'content') else str(response)
+            
+            # Parse AI response
+            subject = None  # ✅ Changed: No default, let manual extraction handle it
+            start_time = "14:00:00"  # default
+            end_time = "15:00:00"    # default
+            
+            for line in ai_response.split('\n'):
+                if line.startswith('SUBJECT:'):
+                    subject = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('START_TIME:'):
+                    start_time = line.split(':', 1)[1].strip()
+                    if len(start_time) == 5:  # HH:MM format
+                        start_time += ":00"
+                elif line.startswith('END_TIME:'):
+                    end_time = line.split(':', 1)[1].strip()
+                    if len(end_time) == 5:  # HH:MM format
+                        end_time += ":00"
+            
+            # Handle AI response
+            valid_subjects = ["python", "react", "vue", "java", "javascript", "database", "web", "mobile", "devops", "genai", "ai", "ml"]
+            
+            result = None
+            if subject == "unclear":
+                print(f"🤖 AI determined subject is UNCLEAR from message: '{message}'")
+                result = (None, start_time, end_time)  # Return None to trigger error message
+            elif subject and subject in valid_subjects:
+                print(f"🤖 AI extracted - Subject: {subject}, Time: {start_time}-{end_time}")
+                result = (subject, start_time, end_time)
+            else:
+                print(f"⚠️ AI returned unexpected subject: {subject}, trying manual extraction")
+                result = extract_subject_and_timing_manual(message)
+            
+            # Cache successful AI results
+            if result and result[0] is not None:
+                extract_subject_and_timing_with_ai.cache[cache_key] = result
+            
+            return result
+                
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check for rate limiting (529 error) - fail fast
+            if "529" in error_msg or "overloaded" in error_msg.lower():
+                print(f"❌ AI rate limited, immediately using manual extraction")
+                break  # Skip retries for rate limiting
+            else:
+                print(f"❌ AI extraction failed: {e}, using manual method")
+                break  # Skip retries for other errors too
+            
+            # Fallback to manual extraction
+            return extract_subject_and_timing_manual(message)
+    
+    # If all retries failed, use manual extraction
+    return extract_subject_and_timing_manual(message)
 
 def extract_subject_and_timing_manual(message: str) -> tuple:
-    """Manual fallback for subject and timing extraction"""
-    message_lower = message.lower()
+    """Enhanced manual fallback with fuzzy matching and intelligent detection"""
+    import difflib
+    message_lower = message.lower().strip()
     
-    # Simple subject detection
-    if any(keyword in message_lower for keyword in ["python", "flask", "django", "ai", "ml"]):
-        subject = "python"
-    elif any(keyword in message_lower for keyword in ["react", "nextjs", "jsx"]):
-        subject = "react"
-    elif any(keyword in message_lower for keyword in ["java", "spring"]):
-        subject = "java"
-    elif any(keyword in message_lower for keyword in ["javascript", "js", "node"]):
-        subject = "javascript"
-    elif any(keyword in message_lower for keyword in ["aws", "docker", "devops"]):
-        subject = "devops"
-    else:
-        subject = "python"  # default
+    # Enhanced subject mappings with comprehensive coverage
+    subject_mappings = {
+        "python": {
+            "exact": ["python", "py"],
+            "frameworks": ["django", "flask", "fastapi", "streamlit", "tornado"],
+            "libraries": ["pandas", "numpy", "matplotlib", "scipy", "requests"],
+            "ai_ml": ["tensorflow", "pytorch", "scikit-learn", "keras", "langchain", "openai", "chatgpt", "ai", "ml", "machine learning", "deep learning", "neural networks", "data science", "nlp"],
+            "typos": ["pyhton", "pythn", "phyton"]  # Common typos
+        },
+        "react": {
+            "exact": ["react", "reactjs", "react.js"],
+            "frameworks": ["nextjs", "next.js", "gatsby", "remix"],
+            "libraries": ["redux", "mobx", "recoil", "zustand"],
+            "concepts": ["jsx", "hooks", "components"]
+        },
+        "vue": {
+            "exact": ["vue", "vuejs", "vue.js"],
+            "frameworks": ["nuxt", "nuxtjs", "quasar"],
+            "libraries": ["vuex", "pinia", "vue-router"],
+            "concepts": ["composition api", "options api"]
+        },
+        "java": {
+            "exact": ["java"],
+            "frameworks": ["spring", "spring boot", "hibernate", "struts"],
+            "tools": ["maven", "gradle"],
+            "concepts": ["jvm", "jpa", "jsp", "servlets"]
+        },
+        "javascript": {
+            "exact": ["javascript", "js"],
+            "runtime": ["nodejs", "node.js", "deno"],
+            "frameworks": ["express", "koa", "nestjs"],
+            "concepts": ["typescript", "es6", "npm", "yarn"]
+        },
+        "database": {
+            "sql": ["mysql", "postgresql", "sqlite", "oracle"],
+            "nosql": ["mongodb", "redis", "cassandra"],
+            "concepts": ["sql", "database", "db", "queries", "data modeling"]
+        },
+        "web": {
+            "markup": ["html", "html5"],
+            "styling": ["css", "css3", "sass", "scss"],
+            "frameworks": ["bootstrap", "tailwind", "bulma"],
+            "concepts": ["responsive design", "flexbox", "grid", "frontend"]
+        },
+        "mobile": {
+            "native": ["android", "ios", "swift", "kotlin"],
+            "cross_platform": ["flutter", "react native", "xamarin"],
+            "concepts": ["mobile development", "app development", "mobile app"]
+        },
+        "devops": {
+            "containers": ["docker", "kubernetes", "podman"],
+            "cloud": ["aws", "azure", "gcp", "google cloud"],
+            "ci_cd": ["jenkins", "github actions", "gitlab ci"],
+            "concepts": ["devops", "deployment", "infrastructure", "cloud", "containers"]
+        }
+    }
     
-    # Parse timing manually
+    # Create flat keyword mapping for exact matches
+    keyword_to_subject = {}
+    all_keywords = []
+    for subject, categories in subject_mappings.items():
+        for category, keywords in categories.items():
+            for keyword in keywords:
+                keyword_to_subject[keyword.lower()] = subject
+                all_keywords.append(keyword.lower())
+    
+    # Ordered keywords - longer/more specific terms first to avoid conflicts
+    priority_keywords = [
+        # Multi-word phrases first (most specific)
+        ("machine learning", "python"), ("spring boot", "java"), ("next.js", "react"),
+        ("deep learning", "python"), ("data science", "python"), ("react native", "mobile"),
+        ("mobile app", "mobile"), ("app development", "mobile"),
+        
+        # Technology-specific terms
+        ("javascript", "javascript"), ("typescript", "javascript"), ("nodejs", "javascript"), ("node.js", "javascript"),
+        ("python", "python"), ("django", "python"), ("flask", "python"), ("fastapi", "python"),
+        ("react", "react"), ("reactjs", "react"), ("nextjs", "react"), ("jsx", "react"),
+        ("vue", "vue"), ("vuejs", "vue"), ("vue.js", "vue"), ("nuxt", "vue"),
+        ("java", "java"), ("spring", "java"), ("hibernate", "java"),
+        
+        # AI/ML terms
+        ("tensorflow", "python"), ("pytorch", "python"), ("langchain", "python"), ("openai", "python"),
+        ("chatgpt", "python"), ("ai", "python"), ("ml", "python"),
+        
+        # Web technologies
+        ("html", "web"), ("css", "web"), ("bootstrap", "web"), ("tailwind", "web"),
+        
+        # DevOps
+        ("docker", "devops"), ("kubernetes", "devops"), ("aws", "devops"), ("azure", "devops"),
+        
+        # Database
+        ("mongodb", "database"), ("mysql", "database"), ("postgresql", "database"), ("sqlite", "database"),
+        
+        # Mobile
+        ("android", "mobile"), ("ios", "mobile"), ("flutter", "mobile"), ("swift", "mobile"), ("kotlin", "mobile"),
+        
+        # Short forms (last to avoid conflicts)
+        ("js", "javascript"), ("py", "python"),
+    ]
+    
+    # Check priority keywords in order (most specific first)
+    for keyword, subject in priority_keywords:
+        if keyword in message_lower:
+            print(f"🔍 Fast manual: found '{keyword}' → '{subject}'")
+            start_time, end_time = parse_time_from_message(message)
+            return subject, start_time, end_time
+    
+    # Simple typo handling for most common cases
+    typo_fixes = [
+        ("pyhton", "python"), ("pythn", "python"), ("phyton", "python"),
+        ("reactjs", "react"), ("reakt", "react"), ("reat", "react"),
+        ("javascrip", "javascript"), ("javas", "java"),
+    ]
+    
+    for typo, correct in typo_fixes:
+        if typo in message_lower:
+            print(f"🔍 Fast manual: typo fix '{typo}' → '{correct}'")
+            start_time, end_time = parse_time_from_message(message)
+            return correct, start_time, end_time
+    
+    # Check for vague patterns that should return None
+    vague_patterns = [
+        "help with coding", "teach me programming", "learn development", 
+        "help with my project", "coding help", "programming help",
+        "can you teach me", "i need help", "help me learn"
+    ]
+    
+    if any(pattern in message_lower for pattern in vague_patterns):
+        print(f"⚠️ Enhanced manual: Detected vague request pattern")
+        start_time, end_time = parse_time_from_message(message)
+        return None, start_time, end_time
+    
+    # Context-based intelligent guessing
+    context_hints = {
+        "frontend": "react", "backend": "python", "fullstack": "python",
+        "website": "web", "web development": "web", "ui": "react",
+        "server": "python", "api": "python", "microservice": "java",
+        "data analysis": "python", "analytics": "python", "visualization": "python",
+        "mobile app": "mobile", "app development": "mobile", "android app": "mobile",
+        "cloud deployment": "devops", "infrastructure": "devops", "containerization": "devops"
+    }
+    
+    for hint, subject in context_hints.items():
+        if hint in message_lower:
+            print(f"🔍 Enhanced manual: context hint '{hint}' → '{subject}'")
+            start_time, end_time = parse_time_from_message(message)
+            return subject, start_time, end_time
+    
+    # ✅ SAFE: Return None if no clear subject found
+    print(f"⚠️ Enhanced manual: No clear subject found in '{message}'")
     start_time, end_time = parse_time_from_message(message)
-    
-    return subject, start_time, end_time
+    return None, start_time, end_time
 
 # === SIMPLIFIED TOOLS FOR AI AGENT ===
 
@@ -509,8 +822,57 @@ def parse_student_request(input: str) -> str:
         
         print(f"📝 AI parsing student request: {message}")
         
+        # Validate message has basic requirements
+        if not message or len(message.strip()) < 5:
+            return json.dumps({
+                "error": "Please provide more details about your session request (subject, time, day)."
+            })
+        
         # Use AI for intelligent subject and timing extraction
         subject, start_time, end_time = extract_subject_and_timing_with_ai(message)
+        
+        # Enhanced subject validation with intelligent suggestions
+        if not subject or subject == "unknown" or subject is None:
+            # Generate contextual suggestions based on message content
+            suggestions = []
+            message_lower = message.lower()
+            
+            if any(word in message_lower for word in ["web", "frontend", "ui", "website"]):
+                suggestions.extend(["React", "Vue", "Web Development"])
+            elif any(word in message_lower for word in ["backend", "server", "api", "data"]):
+                suggestions.extend(["Python", "Java", "JavaScript"])
+            elif any(word in message_lower for word in ["mobile", "app"]):
+                suggestions.append("Mobile Development")
+            elif any(word in message_lower for word in ["cloud", "deploy", "infrastructure"]):
+                suggestions.append("DevOps")
+            
+            if suggestions:
+                suggestion_text = ", ".join(suggestions)
+                error_msg = f"I couldn't determine the specific subject from your message. Based on what you mentioned, you might be interested in: {suggestion_text}. Please specify clearly (e.g., 'I want Python session 2-3pm')."
+            else:
+                error_msg = "Please specify which technology you'd like to learn. Popular options include: Python, React, Java, JavaScript, Vue, Mobile Development, DevOps, or Web Development. Example: 'I want Python session 2-3pm Monday'."
+            
+            return json.dumps({
+                "error": error_msg
+            })
+        
+        # Validate time format
+        try:
+            # Check if times are valid
+            start_hour = int(start_time.split(':')[0])
+            end_hour = int(end_time.split(':')[0])
+            if start_hour < 0 or start_hour > 23 or end_hour < 0 or end_hour > 23:
+                return json.dumps({
+                    "error": "Please provide valid times (0-23 hours format)."
+                })
+            if start_hour >= end_hour:
+                return json.dumps({
+                    "error": "Start time must be before end time."
+                })
+        except:
+            return json.dumps({
+                "error": "Please provide clear time format (e.g., '2-3pm', '14:00-15:00')."
+            })
         
         # Parse date from student message
         message_lower = message.lower()
@@ -570,7 +932,7 @@ def parse_student_request(input: str) -> str:
 
 @tool
 def check_existing_session(input: str) -> str:
-    """Check if session exists for specific subject and date, and also check for time conflicts with other sessions. Input: JSON with subject, date, start_time, end_time."""
+    """🤖 AI-POWERED SESSION ANALYZER: Intelligently checks for existing sessions and analyzes pending requests. Input: JSON with subject, date, start_time, end_time."""
     try:
         data = json.loads(input)
         subject = data["subject"].lower()
@@ -578,10 +940,72 @@ def check_existing_session(input: str) -> str:
         start_time = data.get("start_time", "14:00:00")
         end_time = data.get("end_time", "15:00:00")
         
-        print(f"Checking for {subject} session on {date} at {start_time}-{end_time}")
+        print(f"🤖 AI ANALYZER: Checking {subject} sessions on {date}")
         
-        # Check for existing session with same subject and date
-        sessions = supabase.table('sessions').select('*').eq('subject', subject).eq('date', date).eq('status', 'active').execute()
+        # 1. Check for existing ACTIVE sessions
+        active_sessions = supabase.table('sessions').select('*').eq('subject', subject).eq('date', date).eq('status', 'active').execute()
+        
+        # 2. 🧠 AI INTELLIGENCE: Analyze pending requests
+        pending_requests = supabase.table("student_availability").select("*").eq("subject", subject).eq("date", date).is_("session_id", "null").execute()
+        
+        pending_count = len(pending_requests.data)
+        active_count = len(active_sessions.data)
+        
+        print(f"🧠 AI ANALYSIS: {active_count} active sessions, {pending_count} pending requests")
+        
+        if active_sessions.data:
+            session = active_sessions.data[0]
+            
+            # 🤖 AI provides intelligent session analysis
+            ai_analysis = f"""
+🤖 AI FOUND EXISTING SESSION:
+- Subject: {subject.upper()}
+- Date: {date}
+- Time: {session['start_time'][:5]}-{session['end_time'][:5]}
+- Current Students: {session['total_students']}
+- Session ID: {session['id']}
+
+AI RECOMMENDATION: Join existing session for optimal scheduling.
+"""
+            print(ai_analysis)
+            
+            result = {
+                "exists": True,
+                "session_id": session["id"],
+                "current_timing": f"{session['start_time']}-{session['end_time']}",
+                "student_count": session["total_students"],
+                "ai_analysis": ai_analysis,
+                "message": f"🤖 SESSION EXISTS: {subject} session found on {date}. MUST use update_existing_session() to add student and optimize timing!",
+                "action_required": "CALL update_existing_session() - DO NOT call create_new_session()"
+            }
+            return json.dumps(result, indent=2)
+        
+        elif pending_count > 0:
+            # 🧠 AI analyzes pending patterns
+            timing_patterns = {}
+            for req in pending_requests.data:
+                time_key = f"{req['start_time'][:5]}-{req['end_time'][:5]}"
+                timing_patterns[time_key] = timing_patterns.get(time_key, 0) + 1
+            
+            ai_pattern_analysis = f"""
+🤖 AI PATTERN ANALYSIS:
+- Pending Requests: {pending_count}
+- Timing Preferences: {timing_patterns}
+- Status: Collecting requests for optimal scheduling
+
+AI STRATEGY: Waiting for more requests to create majority-optimized session.
+"""
+            print(ai_pattern_analysis)
+            
+            result = {
+                "exists": False,
+                "pending_requests": pending_count,
+                "timing_patterns": timing_patterns,
+                "ai_analysis": ai_pattern_analysis,
+                "message": f"🤖 NO SESSION EXISTS: No {subject} session found for {date}. MUST use create_new_session() to create first session!",
+                "action_required": "CALL create_new_session() - This will be the FIRST student"
+            }
+            return json.dumps(result, indent=2)
         
         if sessions.data:
             session = sessions.data[0]
@@ -595,7 +1019,7 @@ def check_existing_session(input: str) -> str:
             print(f"Found existing session: {result['message']}")
             return json.dumps(result, indent=2)
         
-        # Check for time conflicts with other sessions on the same date (different subjects)
+        # Check for time conflicts with other sessions on the same date (ONLY different subjects)
         all_sessions = supabase.table('sessions').select('*').eq('date', date).eq('status', 'active').execute()
         
         if all_sessions.data:
@@ -608,10 +1032,14 @@ def check_existing_session(input: str) -> str:
             new_end_mins = time_to_minutes(end_time)
             
             for existing_session in all_sessions.data:
+                # SKIP same subject sessions - they should be joined, not blocked
+                if existing_session['subject'].lower() == subject.lower():
+                    continue
+                    
                 existing_start_mins = time_to_minutes(existing_session['start_time'])
                 existing_end_mins = time_to_minutes(existing_session['end_time'])
                 
-                # Check if there's any overlap
+                # Check if there's any overlap with DIFFERENT subject
                 if (new_start_mins < existing_end_mins and new_end_mins > existing_start_mins):
                     conflict_result = {
                         "exists": False,
@@ -640,58 +1068,222 @@ def check_existing_session(input: str) -> str:
 
 @tool
 def create_new_session(input: str) -> str:
-    """Create a new session. Input: JSON with student_id, subject, date, start_time, end_time."""
+    """🤖 SMART SESSION HANDLER: Intelligently handles entire workflow - creates session for first student OR adds to existing session with AI optimization. Input: JSON with student_id, subject, date, start_time, end_time."""
     try:
         data = json.loads(input)
         student_id = data["student_id"]
         subject = data["subject"].lower()
-        date = data["date"]
-        start_time = data["start_time"]
-        end_time = data["end_time"]
+        date = data.get("date") or data.get("session_date")  # Handle both key names
+        start_time = data.get("start_time") or data.get("preferred_start_time")
+        end_time = data.get("end_time") or data.get("preferred_end_time")
         
-        print(f"🆕 Creating new {subject} session for {date} at {start_time}-{end_time}")
+        if not date:
+            return "❌ Missing date information"
+        if not start_time:
+            return "❌ Missing start time information"
+        if not end_time:
+            return "❌ Missing end time information"
         
-        # 1. Store student availability
-        availability_data = {
-            "student_id": student_id,
-            "date": date,
-            "start_time": start_time,
-            "end_time": end_time,
-            "subject": subject
-        }
-        supabase.table("student_availability").insert(availability_data).execute()
+        print(f"🤖 SMART HANDLER: Processing {student_id} request for {subject} on {date}")
         
-        # 2. Create session
-        session_data = {
-            "teacher_id": TEACHER_ID,
-            "subject": subject,
-            "date": date,
-            "start_time": start_time,
-            "end_time": end_time,
-            "meet_link": "https://meet.google.com/hdg-yoks-wpy",
-            "status": "active",
-            "total_students": 1
-        }
+        # 🛡️ ENHANCED CONFLICT DETECTION: Check for different subject sessions at same time
+        all_sessions_same_time = supabase.table('sessions').select('*').eq('date', date).eq('status', 'active').execute()
         
-        session_response = supabase.table("sessions").insert(session_data).execute()
-        session_id = session_response.data[0]["id"]
+        conflicting_sessions = []
+        same_subject_sessions = []
         
-        # 3. Enroll student
-        enrollment_data = {
-            "session_id": session_id,
-            "student_id": student_id
-        }
-        supabase.table("session_enrollments").insert(enrollment_data).execute()
+        for session in all_sessions_same_time.data:
+            session_start = session['start_time']
+            session_end = session['end_time']
+            session_subject = session['subject']
+            
+            # Check for time overlap
+            if ((start_time >= session_start and start_time < session_end) or
+                (end_time > session_start and end_time <= session_end) or
+                (start_time <= session_start and end_time >= session_end)):
+                
+                if session_subject != subject:
+                    conflicting_sessions.append(session)
+                else:
+                    same_subject_sessions.append(session)
         
-        # 4. Update availability with session_id
-        supabase.table("student_availability").update({"session_id": session_id}).eq("student_id", student_id).eq("date", date).eq("subject", subject).execute()
+        # Simplified conflict handling
+        if conflicting_sessions:
+            conflict_session = conflicting_sessions[0]
+            conflict_subject = conflict_session['subject']
+            conflict_time = f"{conflict_session['start_time'][:5]}-{conflict_session['end_time'][:5]}"
+            
+            return f"⚠️ Time conflict! {conflict_subject.title()} session already at {conflict_time}. Try a different time."
         
-        print(f"✅ Session created with ID: {session_id}")
-        return f"✅ {subject.title()} session created at {start_time[:5]}-{end_time[:5]} (1 student)"
+        # 1. Check for existing sessions for this subject and date
+        existing_sessions = supabase.table('sessions').select('*').eq('subject', subject).eq('date', date).eq('status', 'active').execute()
+        
+        if existing_sessions.data:
+            # SESSION EXISTS - Add student and optimize timing
+            session = existing_sessions.data[0]
+            session_id = session['id']
+            current_timing = f"{session['start_time'][:5]}-{session['end_time'][:5]}"
+            current_students = session['total_students']
+            
+            print(f"✅ FOUND EXISTING SESSION: {session_id} at {current_timing} with {current_students} students")
+            
+            # Check if student already enrolled
+            existing_enrollment = supabase.table("session_enrollments").select("*").eq("session_id", session_id).eq("student_id", student_id).execute()
+            
+            if existing_enrollment.data:
+                return f"✅ You're already enrolled in the {subject} session at {current_timing}!"
+            
+            # Add student's availability
+            availability_data = {
+                "student_id": student_id,
+                "date": date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "subject": subject,
+                "session_id": session_id
+            }
+            supabase.table("student_availability").insert(availability_data).execute()
+            
+            # Enroll student
+            supabase.table("session_enrollments").insert({
+                "session_id": session_id,
+                "student_id": student_id
+            }).execute()
+            
+            new_total = current_students + 1
+            print(f"✅ ENROLLED {student_id}. Now {new_total} students total.")
+            
+            # 🧠 AI OPTIMIZATION: Analyze ALL students for optimal timing
+            all_students = supabase.table("student_availability").select("*").eq("session_id", session_id).execute()
+            
+            student_timings = []
+            timing_summary = []
+            
+            for avail in all_students.data:
+                student_timings.append((avail["start_time"], avail["end_time"]))
+                timing_summary.append(f"{avail['student_id']}: {avail['start_time'][:5]}-{avail['end_time'][:5]}")
+            
+            print(f"🧠 AI ANALYZING ALL {len(student_timings)} students:")
+            for summary in timing_summary:
+                print(f"   {summary}")
+            
+            # Use AI to find optimal timing
+            if llm is not None:
+                try:
+                    ai_prompt = f"""
+🤖 DYNAMIC SESSION OPTIMIZER
+
+CURRENT SESSION: {current_timing} with {current_students} previous students
+NEW STUDENT: {student_id} prefers {start_time[:5]}-{end_time[:5]}
+
+ALL STUDENT PREFERENCES (including new student):
+{chr(10).join(timing_summary)}
+
+TASK: Determine optimal timing for ALL {new_total} students.
+
+Count votes for each time slot and select majority preference.
+
+RESPOND IN FORMAT:
+VOTE_ANALYSIS: [Count for each time slot]
+OPTIMAL_TIME: [HH:MM-HH:MM]
+MAJORITY_COUNT: [Number preferring optimal time]
+REASONING: [Why this time was selected]
+
+Example:
+VOTE_ANALYSIS: 12:00-13:00 has 3 votes, 16:00-17:00 has 4 votes
+OPTIMAL_TIME: 16:00-17:00
+MAJORITY_COUNT: 4
+REASONING: 16:00-17:00 wins with 4 votes vs 3 votes
+"""
+                    
+                    ai_response = llm.invoke(ai_prompt)
+                    ai_decision = ai_response.content if hasattr(ai_response, 'content') else str(ai_response)
+                    print(f"🤖 AI ANALYSIS:\n{ai_decision}")
+                    
+                    # Extract optimal timing
+                    time_match = re.search(r'OPTIMAL_TIME:\s*(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', ai_decision)
+                    if time_match:
+                        start_h, start_m, end_h, end_m = time_match.groups()
+                        optimal_start = f"{int(start_h):02d}:{start_m}:00"
+                        optimal_end = f"{int(end_h):02d}:{end_m}:00"
+                        
+                        # Check if timing needs to change
+                        if optimal_start != session['start_time'] or optimal_end != session['end_time']:
+                            print(f"🔄 AI UPDATING: {session['start_time'][:5]}-{session['end_time'][:5]} → {optimal_start[:5]}-{optimal_end[:5]}")
+                            
+                            # Update session timing
+                            supabase.table("sessions").update({
+                                "start_time": optimal_start,
+                                "end_time": optimal_end,
+                                "total_students": new_total
+                            }).eq("id", session_id).execute()
+                            
+                            return f"🤖 DYNAMIC AI SUCCESS: Added {student_id} and UPDATED session to {optimal_start[:5]}-{optimal_end[:5]} based on ALL {new_total} students! 🎯 AI optimized for majority!"
+                        else:
+                            # Just update student count
+                            supabase.table("sessions").update({"total_students": new_total}).eq("id", session_id).execute()
+                            
+                            return f"✅ Perfect! You're enrolled in the {current_timing} session. {new_total} students total."
+                            
+                except Exception as e:
+                    print(f"⚠️ AI analysis failed: {e}")
+            
+            # Fallback: Just add student without timing change
+            supabase.table("sessions").update({"total_students": new_total}).eq("id", session_id).execute()
+            return f"✅ Added {student_id} to existing {subject} session at {current_timing}. Now {new_total} students enrolled!"
+        
+        else:
+            # NO SESSION EXISTS - Create new session for first student
+            print(f"🚀 NO EXISTING SESSION - Creating new session for FIRST student: {student_id}")
+            
+            # Check for duplicate enrollment
+            existing_enrollment = supabase.table("student_availability").select("*").eq("student_id", student_id).eq("subject", subject).eq("date", date).execute()
+            
+            if existing_enrollment.data:
+                return f"You already have a {subject.title()} session scheduled for {date}."
+            
+            # Store student availability
+            availability_data = {
+                "student_id": student_id,
+                "date": date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "subject": subject,
+                "session_id": None  # Will be updated after session creation
+            }
+            supabase.table("student_availability").insert(availability_data).execute()
+            
+            # Create session
+            session_data = {
+                "teacher_id": TEACHER_ID,
+                "subject": subject,
+                "date": date,
+                "start_time": start_time,
+                "end_time": end_time,
+                "meet_link": "https://meet.google.com/hdg-yoks-wpy",
+                "status": "active",
+                "total_students": 1
+            }
+            
+            session_response = supabase.table("sessions").insert(session_data).execute()
+            session_id = session_response.data[0]["id"]
+            
+            # Enroll student
+            supabase.table("session_enrollments").insert({
+                "session_id": session_id,
+                "student_id": student_id
+            }).execute()
+            
+            # Update availability with session_id
+            supabase.table("student_availability").update({"session_id": session_id}).eq("student_id", student_id).eq("date", date).eq("subject", subject).execute()
+            
+            print(f"✅ CREATED SESSION {session_id} for FIRST student")
+            
+            return f"✅ Great! {subject.title()} session created for {start_time[:5]}-{end_time[:5]}. You're enrolled!"
         
     except Exception as e:
-        print(f"❌ Error creating session: {e}")
-        return f"Error creating session: {e}"
+        print(f"❌ Smart handler error: {e}")
+        return f"🤖 Smart handler encountered an error: {e}"
 
 @tool
 def check_teacher_availability(input: str) -> str:
@@ -739,7 +1331,7 @@ def check_teacher_availability(input: str) -> str:
         teacher_times = [f"{avail['start_time'][:5]}-{avail['end_time'][:5]}" for avail in teacher_availability.data]
         return json.dumps({
             "available": False,
-            "message": f"Teacher is not available at {start_time[:5]}-{end_time[:5]}. Teacher is available: {', '.join(teacher_times)}"
+            "message": f"Teacher busy at {start_time[:5]}-{end_time[:5]}. Available: {', '.join(teacher_times)}"
         })
         
     except Exception as e:
@@ -747,6 +1339,45 @@ def check_teacher_availability(input: str) -> str:
             "available": False,
             "message": f"Error checking teacher availability: {e}"
         })
+
+def get_teacher_sessions_with_filter(teacher_id: str, filter_type: str = "all") -> list:
+    """Get all sessions for a teacher with optional filtering"""
+    try:
+        print(f"🔍 Getting sessions for teacher {teacher_id} with filter {filter_type}")
+        
+        # Get all sessions for the teacher
+        sessions = supabase.table('sessions').select('*').eq('teacher_id', teacher_id).order('date', {'ascending': True}).execute()
+        
+        if not sessions.data:
+            print(f"No sessions found for teacher {teacher_id}")
+            return []
+        
+        # Apply filtering based on filter_type
+        from datetime import datetime, date
+        today = date.today()
+        
+        filtered_sessions = []
+        for session in sessions.data:
+            session_date = datetime.strptime(session['date'], '%Y-%m-%d').date()
+            
+            if filter_type == "all":
+                filtered_sessions.append(session)
+            elif filter_type == "today_future":
+                if session_date >= today:
+                    filtered_sessions.append(session)
+            elif filter_type == "today":
+                if session_date == today:
+                    filtered_sessions.append(session)
+            elif filter_type == "future":
+                if session_date > today:
+                    filtered_sessions.append(session)
+        
+        print(f"✅ Found {len(filtered_sessions)} sessions after filtering")
+        return filtered_sessions
+        
+    except Exception as e:
+        print(f"❌ Error getting teacher sessions: {e}")
+        return []
 
 @tool
 def analyze_timing_conflict(input: str) -> str:
@@ -764,26 +1395,33 @@ def analyze_timing_conflict(input: str) -> str:
         
         timing_text = "\n".join(timing_summary)
         
-        # AI prompt for timing optimization
+        # AI prompt for timing optimization - focus on majority preference
         ai_prompt = f"""
-You are an intelligent session scheduler. Analyze these student availability timings:
+You are an intelligent session scheduler. Analyze these student availability timings for the SAME SUBJECT:
 
 {timing_text}
 
-CRITICAL RULES:
-1. If the new student's timing is more than 2 hours away from existing students, REJECT them
-2. Only enroll students if there's reasonable overlap (at least 30 minutes)
-3. If timings are incompatible, suggest they join existing session time or create separate session
+MAJORITY-BASED SCHEDULING RULES:
+1. Count how many students prefer each time slot
+2. Select the time slot preferred by the MOST students (majority wins)
+3. Only reject if the time gap is extremely large (>6 hours)
+4. Prioritize student majority over perfect overlap
+
+DECISION LOGIC:
+- Find the most common time preference
+- Use that time slot as the session time
+- Accept unless gap > 6 hours (extremely inconvenient)
 
 Respond in this format:
 DECISION: [ACCEPT/REJECT]
-REASONING: [Your 2-3 sentence explanation]
+REASONING: [Explain which time slot has majority preference]
 RECOMMENDED_TIME: [HH:MM - HH:MM] (only if ACCEPT)
-ACCOMMODATED: [number] students
+ACCOMMODATED: [number] students will be accommodated
+MAJORITY_COUNT: [number] students prefer this time
 
 Examples:
-- If compatible: "DECISION: ACCEPT\nREASONING: Students have good overlap from 13:00-14:00.\nRECOMMENDED_TIME: 13:00 - 14:00\nACCOMMODATED: 3 students"
-- If incompatible: "DECISION: REJECT\nREASONING: New student wants 16:00-17:00 but existing session is 12:00-14:00, too far apart.\nACCOMMODATED: 0 students"
+- Clear majority: "DECISION: ACCEPT\nREASONING: 6 students prefer 16:00-17:00 vs 4 students prefer 12:00-13:00. Using majority preference.\nRECOMMENDED_TIME: 16:00 - 17:00\nACCOMMODATED: 10 students\nMAJORITY_COUNT: 6 students"
+- Close call: "DECISION: ACCEPT\nREASONING: 5 students prefer 14:00-15:00 vs 4 students prefer 15:00-16:00. Using majority.\nRECOMMENDED_TIME: 14:00 - 15:00\nACCOMMODATED: 9 students\nMAJORITY_COUNT: 5 students"
 """
         
         if llm is not None:
@@ -804,7 +1442,7 @@ Examples:
 
 @tool
 def update_existing_session(input: str) -> str:
-    """Add student to existing session and optimize timing. Input: JSON with session_id, student_id, preferred_start_time, preferred_end_time, subject, date."""
+    """🤖 DYNAMIC AI OPTIMIZER: Adds new student and INTELLIGENTLY UPDATES session timing by analyzing ALL enrolled students. Showcases real-time AI adaptation! Input: JSON with session_id, student_id, preferred_start_time, preferred_end_time, subject, date."""
     try:
         data = json.loads(input)
         session_id = data["session_id"]
@@ -814,7 +1452,7 @@ def update_existing_session(input: str) -> str:
         subject = data["subject"].lower()
         date = data["date"]
         
-        print(f"🔄 Updating session {session_id} with new student {student_id}")
+        print(f"🤖 DYNAMIC AI OPTIMIZER: Adding {student_id} to session {session_id}")
         
         # Check if already enrolled
         existing = supabase.table("session_enrollments").select("*").eq("session_id", session_id).eq("student_id", student_id).execute()
@@ -823,7 +1461,18 @@ def update_existing_session(input: str) -> str:
             print(f"⚠️ Student already enrolled")
             return f"✅ You're already enrolled in this {subject} session!"
         
-        # 1. Store student availability
+        # Get current session info
+        current_session = supabase.table("sessions").select("*").eq("id", session_id).execute()
+        if not current_session.data:
+            return f"❌ Session not found"
+        
+        session_info = current_session.data[0]
+        current_timing = f"{session_info['start_time'][:5]}-{session_info['end_time'][:5]}"
+        current_students = session_info['total_students']
+        
+        print(f"📊 Current session: {current_timing} with {current_students} students")
+        
+        # 1. Store new student's availability
         availability_data = {
             "student_id": student_id,
             "date": date,
@@ -834,73 +1483,142 @@ def update_existing_session(input: str) -> str:
         }
         supabase.table("student_availability").insert(availability_data).execute()
         
-        # 2. Enroll student
-        enrollment_data = {
+        # 2. Enroll new student
+        supabase.table("session_enrollments").insert({
             "session_id": session_id,
             "student_id": student_id
-        }
-        supabase.table("session_enrollments").insert(enrollment_data).execute()
+        }).execute()
         
-        # 3. Get all student timings for this session to analyze with AI
-        all_availability = supabase.table("student_availability").select("start_time, end_time").eq("session_id", session_id).execute()
+        new_total = current_students + 1
+        print(f"✅ Enrolled {student_id}. Now {new_total} students total.")
         
-        student_timings = [(avail["start_time"], avail["end_time"]) for avail in all_availability.data]
+        # 3. 🧠 AI EXCELLENCE: Analyze ALL students (previous + new) for optimal timing
+        all_students = supabase.table("student_availability").select("*").eq("session_id", session_id).execute()
         
-        # 4. Use AI to analyze timing conflicts and decide whether to enroll student
+        student_timings = []
+        timing_summary = []
+        student_list = []
+        
+        for avail in all_students.data:
+            student_timings.append((avail["start_time"], avail["end_time"]))
+            timing_summary.append(f"{avail['student_id']}: {avail['start_time'][:5]}-{avail['end_time'][:5]}")
+            student_list.append(avail['student_id'])
+        
+        print(f"🧠 AI analyzing ALL {len(student_timings)} students for optimal timing:")
+        for summary in timing_summary:
+            print(f"   {summary}")
+        
+        # 4. 🤖 DYNAMIC AI OPTIMIZATION
         if llm is not None:
             try:
-                ai_analysis_input = json.dumps({"student_timings": student_timings})
-                ai_decision = analyze_timing_conflict(ai_analysis_input)
-                print(f"🤖 AI Timing Decision: {ai_decision}")
+                ai_prompt = f"""
+🤖 DYNAMIC AI SESSION OPTIMIZER
+
+SITUATION: Student {student_id} just joined a {subject.upper()} session on {date}.
+CURRENT SESSION: {current_timing} with {current_students} previous students
+NEW STUDENT PREFERENCE: {preferred_start[:5]}-{preferred_end[:5]}
+
+ALL STUDENT PREFERENCES (including new student):
+{chr(10).join(timing_summary)}
+
+TASK: Determine the NEW OPTIMAL timing considering ALL {new_total} students.
+
+ANALYSIS STEPS:
+1. Count votes for each time slot
+2. Find the MAJORITY preference
+3. Recommend the optimal time for ALL students
+4. Consider this is DYNAMIC optimization (session timing can change)
+
+RESPOND IN THIS FORMAT:
+CURRENT_TIMING: {current_timing}
+VOTE_ANALYSIS: [Count votes for each time slot]
+NEW_OPTIMAL_TIME: [HH:MM-HH:MM format]
+MAJORITY_COUNT: [Number of students preferring optimal time]
+CHANGE_REASON: [Why timing changed or stayed same]
+TOTAL_STUDENTS: {new_total}
+
+Example:
+CURRENT_TIMING: 12:00-13:00
+VOTE_ANALYSIS: 12:00-13:00 has 3 votes, 16:00-17:00 has 4 votes
+NEW_OPTIMAL_TIME: 16:00-17:00
+MAJORITY_COUNT: 4
+CHANGE_REASON: Timing updated because 4 students prefer 16:00-17:00 vs 3 for 12:00-13:00
+TOTAL_STUDENTS: 7
+"""
                 
-                # Check if AI decided to REJECT the student
-                if "DECISION: REJECT" in ai_decision:
-                    print("❌ AI rejected student enrollment due to incompatible timing")
-                    return f"❌ Your timing ({preferred_start[:5]}-{preferred_end[:5]}) is not compatible with the existing session. The current session is scheduled for a different time. Would you like to join the existing session time instead, or shall I create a separate session for you?"
+                ai_response = llm.invoke(ai_prompt)
+                ai_decision = ai_response.content if hasattr(ai_response, 'content') else str(ai_response)
+                print(f"🤖 DYNAMIC AI ANALYSIS:\n{ai_decision}")
                 
-                # Extract timing from AI response (look for HH:MM - HH:MM pattern)
+                # Extract new optimal timing
                 import re
-                time_match = re.search(r'RECOMMENDED_TIME:\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})', ai_decision)
+                time_match = re.search(r'NEW_OPTIMAL_TIME:\s*(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', ai_decision)
                 if time_match:
-                    start_hour, start_min, end_hour, end_min = time_match.groups()
-                    optimal_start = f"{int(start_hour):02d}:{start_min}:00"
-                    optimal_end = f"{int(end_hour):02d}:{end_min}:00"
-                    print(f"✅ AI approved enrollment with timing: {optimal_start} - {optimal_end}")
+                    start_h, start_m, end_h, end_m = time_match.groups()
+                    new_optimal_start = f"{int(start_h):02d}:{start_m}:00"
+                    new_optimal_end = f"{int(end_h):02d}:{end_m}:00"
                     
-                    # Check teacher availability for the proposed time
-                    teacher_check_input = json.dumps({
-                        "date": date,
-                        "start_time": optimal_start,
-                        "end_time": optimal_end
-                    })
-                    teacher_availability = check_teacher_availability(teacher_check_input)
-                    teacher_data = json.loads(teacher_availability)
-                    
-                    if not teacher_data["available"]:
-                        print("❌ Teacher not available for proposed time")
-                        return f"❌ {teacher_data['message']} Please choose a time when the teacher is available."
-                    
+                    # Check if timing needs to change
+                    if new_optimal_start != session_info['start_time'] or new_optimal_end != session_info['end_time']:
+                        print(f"🔄 AI UPDATING session timing: {session_info['start_time'][:5]}-{session_info['end_time'][:5]} → {new_optimal_start[:5]}-{new_optimal_end[:5]}")
+                        
+                        # Update session timing
+                        supabase.table("sessions").update({
+                            "start_time": new_optimal_start,
+                            "end_time": new_optimal_end,
+                            "total_students": new_total
+                        }).eq("id", session_id).execute()
+                        
+                        return f"🤖 DYNAMIC AI SUCCESS: Added {student_id} and UPDATED session timing to {new_optimal_start[:5]}-{new_optimal_end[:5]} based on ALL {new_total} students' preferences! 🎯 AI optimized for majority!"
+                    else:
+                        print(f"✅ AI determined current timing {current_timing} is still optimal")
+                        
+                        # Just update student count
+                        supabase.table("sessions").update({
+                            "total_students": new_total
+                        }).eq("id", session_id).execute()
+                        
+                        return f"✅ You're enrolled! Session time: {current_timing}. {new_total} students joined."
                 else:
                     # Fallback to algorithmic approach
                     optimal_start, optimal_end = calculate_optimal_timing(student_timings)
-                    print("⚠️ AI timing extraction failed, using algorithmic approach")
+                    
+                    if optimal_start != session_info['start_time'] or optimal_end != session_info['end_time']:
+                        supabase.table("sessions").update({
+                            "start_time": optimal_start,
+                            "end_time": optimal_end,
+                            "total_students": new_total
+                        }).eq("id", session_id).execute()
+                        
+                        return f"✅ Enrolled! Session time updated to {optimal_start[:5]}-{optimal_end[:5]} for all {new_total} students."
+                    else:
+                        supabase.table("sessions").update({"total_students": new_total}).eq("id", session_id).execute()
+                        return f"✅ You're in! Session: {current_timing}. {new_total} students enrolled."
+                        
             except Exception as e:
-                print(f"⚠️ AI timing analysis failed: {e}")
-                optimal_start, optimal_end = calculate_optimal_timing(student_timings)
+                print(f"⚠️ AI optimization failed: {e}")
+                # Just add student without timing change
+                supabase.table("sessions").update({"total_students": new_total}).eq("id", session_id).execute()
+                return f"✅ Added {student_id} to session. Current timing maintained."
         else:
-            # Fallback to algorithmic approach when AI is not available
+            # No AI available, use algorithmic approach
             optimal_start, optimal_end = calculate_optimal_timing(student_timings)
+            
+            if optimal_start != session_info['start_time'] or optimal_end != session_info['end_time']:
+                supabase.table("sessions").update({
+                    "start_time": optimal_start,
+                    "end_time": optimal_end,
+                    "total_students": new_total
+                }).eq("id", session_id).execute()
+                
+                return f"🤖 Updated session timing to {optimal_start[:5]}-{optimal_end[:5]} for {new_total} students!"
+            else:
+                supabase.table("sessions").update({"total_students": new_total}).eq("id", session_id).execute()
+                return f"✅ Added {student_id}. Timing remains optimal for {new_total} students!"
         
-        # 5. Update session timing
-        supabase.table("sessions").update({
-            "start_time": optimal_start,
-            "end_time": optimal_end
-        }).eq("id", session_id).execute()
-        
-        # 6. Update student count
-        enrollments = supabase.table("session_enrollments").select("*").eq("session_id", session_id).execute()
-        total_students = len(enrollments.data)
-        supabase.table("sessions").update({"total_students": total_students}).eq("id", session_id).execute()
+    except Exception as e:
+        print(f"❌ Dynamic AI update error: {e}")
+        return f"🤖 Dynamic AI encountered an error: {e}"
         
         print(f"✅ Session updated: {optimal_start}-{optimal_end}, {total_students} students")
         return f"✅ {subject.title()} session updated to {optimal_start[:5]}-{optimal_end[:5]} ({total_students} students)"
@@ -1011,12 +1729,12 @@ def set_teacher_availability(input: str) -> str:
             # Update existing availability
             supabase.table("teacher_availability").update(availability_data).eq("teacher_id", teacher_id).eq("date", date).execute()
             print(f"✅ Updated teacher availability for {date}")
-            return f"✅ Perfect! Your availability for {date} from {start_time[:5]} to {end_time[:5]} has been updated!"
+            return f"✅ Availability updated: {start_time[:5]}-{end_time[:5]}"
         else:
             # Insert new availability
             supabase.table("teacher_availability").insert(availability_data).execute()
             print(f"✅ Added teacher availability for {date}")
-            return f"✅ Great! Your availability for {date} from {start_time[:5]} to {end_time[:5]} has been set!"
+            return f"✅ Availability set: {start_time[:5]}-{end_time[:5]}"
             
     except Exception as e:
         print(f"❌ Error setting teacher availability: {e}")
@@ -1039,23 +1757,21 @@ tools = [
 # Create the agent with proper LangGraph syntax
 if llm is not None:
     try:
-        # Create agent with system message instead of state_modifier
         from langchain_core.messages import SystemMessage
         
-        # Create the agent with tools
-        agent = create_react_agent(llm, tools)
+        # Create the agent with tools and system message
+        agent = create_react_agent(
+            llm, 
+            tools, 
+            state_modifier=SystemMessage(content=system_prompt)
+        )
         
-        # Create the graph
-        class SessionAgentState(TypedDict):
-            messages: List[dict]
-
-        graph_builder = StateGraph(SessionAgentState)
-        graph_builder.add_node("agent", agent)
-        graph_builder.set_entry_point("agent")
-        graph = graph_builder.compile()
         print("✅ LangGraph agent created successfully")
+        graph = agent  # The create_react_agent returns a compiled graph
     except Exception as e:
         print(f"❌ Error creating LangGraph agent: {e}")
+        import traceback
+        traceback.print_exc()
         graph = None
 else:
     graph = None

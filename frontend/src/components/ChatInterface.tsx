@@ -173,9 +173,16 @@ export default function ChatInterface({ user, isTeacher }: ChatInterfaceProps) {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
       console.log('🔄 Sending request to:', `${backendUrl}/api/chat-session`)
 
+      // Get the current session to include the access token
+      const { data: { session } } = await supabase.auth.getSession()
+      
       const response = await fetch(`${backendUrl}/api/chat-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        },
         body: JSON.stringify({
           message: inputMessage,
           user_id: user.id,

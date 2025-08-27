@@ -4,10 +4,12 @@ Simple startup script for the AI Session Scheduler backend
 """
 import uvicorn
 import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+try:
+    import dotenv
+    dotenv.load()
+except ImportError:
+    # Fallback if python-dotenv is not available
+    pass
 
 if __name__ == "__main__":
     print("🚀 Starting AI Session Scheduler Backend...")

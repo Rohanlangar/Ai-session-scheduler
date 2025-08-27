@@ -1,14 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function AuthCallback() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [status, setStatus] = useState('Processing...')
 
   const autoAssignRole = async (user: any) => {
     try {
+      setStatus('Setting up your account...')
+      
       // Check if user already has a role
       const { data: teacherData } = await supabase
         .from('teachers')
@@ -24,6 +28,7 @@ export default function AuthCallback() {
 
       // If user already has a role, don't create another one
       if (teacherData || studentData) {
+        console.log('✅ User already has role assigned')
         return
       }
 
@@ -60,55 +65,68 @@ export default function AuthCallback() {
       
     } catch (error: any) {
       console.error('Error auto-assigning role:', error)
+      // Don't throw error, just log it
     }
   }
 
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // Handle OAuth callback
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const searchParams = new URLSearchParams(window.location.search)
+        setStatus('Authenticating...')
         
-        // Check for OAuth code or hash parameters
-        const code = searchParams.get('code')
-        const accessToken = hashParams.get('access_token')
+        // Check for error in URL params
+        const error = searchParams.get('error')
+        const errorDescription = searchParams.get('error_description')
         
-        if (code || accessToken) {
-          // Let Supabase handle the OAuth callback
-          const { data, error } = await supabase.auth.getSession()
-          
-          if (error) {
-            console.error('Auth callback error:', error)
-            router.push('/auth?error=callback_error')
-            return
-          }
+        if (error) {
+          console.error('OAuth error:', error, errorDescription)
+          setStatus('Authentication failed')
+          setTimeout(() => router.push('/auth?error=oauth_error'), 2000)
+          return
+        }
 
-          if (data.session?.user) {
-            // Auto-assign role based on user ID
-            await autoAssignRole(data.session.user)
-            router.push('/dashboard')
-          } else {
-            router.push('/auth')
-          }
+        // Wait a moment for Supabase to process the OAuth callback
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Get the current session
+        const { data, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError)
+          setStatus('Session error')
+          setTimeout(() => router.push('/auth?error=session_error'), 2000)
+          return
+        }
+
+        if (data.session?.user) {
+          console.log('✅ User authenticated:', data.session.user.email)
+          setStatus('Welcome! Setting up your account...')
+          
+          // Auto-assign role based on user ID
+          await autoAssignRole(data.session.user)
+          
+          setStatus('Redirecting to dashboard...')
+          setTimeout(() => router.push('/dashboard'), 1000)
         } else {
-          // No OAuth parameters, redirect to auth
-          router.push('/auth')
+          console.log('❌ No session found')
+          setStatus('No session found')
+          setTimeout(() => router.push('/auth'), 2000)
         }
       } catch (error) {
         console.error('Callback handling error:', error)
-        router.push('/auth?error=callback_error')
+        setStatus('Something went wrong')
+        setTimeout(() => router.push('/auth?error=callback_error'), 2000)
       }
     }
 
     handleAuthCallback()
-  }, [router])
+  }, [router, searchParams])
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="text-center">
         <div className="w-16 h-16 border-4 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-gray-600">Completing sign in...</p>
+        <p className="text-gray-600">{status}</p>
       </div>
     </div>
   )

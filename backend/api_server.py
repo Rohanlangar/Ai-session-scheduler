@@ -4,6 +4,13 @@ from pydantic import BaseModel
 import uvicorn
 import asyncio
 from datetime import datetime
+import os
+try:
+    import dotenv
+    dotenv.load()
+except ImportError:
+    # Fallback if python-dotenv is not available
+    pass
 
 app = FastAPI(title="AI Session Scheduler API")
 
@@ -23,9 +30,6 @@ async def keep_alive_task():
             print(f"🔄 Keep-alive ping at {datetime.now()}")
         except Exception as e:
             print(f"⚠️ Keep-alive failed: {e}")
-
-# CORS - Allow frontend to connect
-import os
 
 # CORS - Allow frontend to connect
 allowed_origins = [
